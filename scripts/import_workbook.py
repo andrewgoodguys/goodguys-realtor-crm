@@ -208,14 +208,57 @@ def post(table: str, rows: list[dict], on_conflict: str | None = None) -> int:
     return sent
 
 
-def fetch_agent_ids() -> dict[str, str]:
-    """name_key -> uuid, so leads and touches can be linked after the fact."""
-    url = f"{SUPABASE_URL}/rest/v1/agents?select=id,name_key&limit=10000"
+def get(path: str):
     req = urllib.request.Request(
-        url, headers={"apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}"}
+        f"{SUPABASE_URL}/rest/v1/{path}",
+        headers={"apikey": SERVICE_KEY, "Authorization": f"Bearer {SERVICE_KEY}"},
     )
     with urllib.request.urlopen(req) as resp:
-        return {r["name_key"]: r["id"] for r in json.loads(resp.read())}
+        return json.loads(resp.read())
+
+
+def fetch_agent_ids() -> dict[str, str]:
+    """name_key -> uuid, so leads and touches can be linked after the fact."""
+    return {r["name_key"]: r["id"] for r in get("agents?select=id,name_key&limit=10000")}
+
+
+def lead_key(row: dict) -> tuple[str, str, str]:
+    """Identity of a lead row, defined for every row including partial ones.
+
+    (address_key, agent_role) alone is not enough: ~300 of the 552 rows have
+    no agent on record, so agent_role is null and those rows would look
+    distinct on every run and re-insert forever. job_number is present on
+    every row and pins the identity down.
+    """
+    return (
+        row.get("job_number") or "",
+        row.get("address_key") or "",
+        row.get("agent_role") or "",
+    )
+
+
+def fetch_existing_lead_keys() -> set[tuple[str, str, str]]:
+    """Lead identities already stored.
+
+    Deduped here rather than with ON CONFLICT because the unique index in 0001
+    is partial, and Postgres will not infer a partial index for ON CONFLICT
+    unless the statement repeats its predicate — which PostgREST cannot send.
+    """
+    rows = get("leads?select=job_number,address_key,agent_role&limit=100000")
+    return {lead_key(r) for r in rows}
+
+
+def fetch_existing_touch_keys() -> set[tuple[str, str, str]]:
+    """(agent_id, channel, occurred_at) for touches this script created.
+
+    Only import-authored rows are considered, so re-running can never
+    duplicate — or disturb — outreach Andrew or Avery logged in the app.
+    """
+    rows = get(
+        "touches?select=agent_id,channel,occurred_at"
+        "&created_by_email=eq.import@goodguysserve.com&limit=100000"
+    )
+    return {(r["agent_id"], r["channel"], r["occurred_at"][:10]) for r in rows}
 
 
 # -------------------------------------------------------------------- build
@@ -430,20 +473,41 @@ def main() -> None:
     print("\nWriting…")
     print(f"  jobs   {post('jobs', jobs, on_conflict='sm_job_id')}")
     print(f"  agents {post('agents', agents, on_conflict='name_key')}")
-    print(f"  runs   {post('runs', runs)}")
+
+    # runs has no natural unique key, so it cannot be upserted. Skip dates
+    # already recorded, otherwise a second import duplicates the whole log.
+    seen_runs = {r["run_date"] for r in get("runs?select=run_date&limit=10000")}
+    new_runs = [r for r in runs if r["run_date"] not in seen_runs]
+    print(f"  runs   {post('runs', new_runs)}"
+          + (f" ({len(runs) - len(new_runs)} already present)" if new_runs != runs else ""))
 
     # Leads and touches need agent UUIDs, so they go after agents land.
     agent_ids = fetch_agent_ids()
     print(f"  resolved {len(agent_ids)} agent ids")
 
     leads = build_leads(outreach, agent_ids)
-    print(f"  leads  {post('leads', leads, on_conflict='address_key,agent_role')}")
+    seen_leads = fetch_existing_lead_keys()
+    new_leads = []
+    for lead in leads:
+        key = lead_key(lead)
+        if key in seen_leads:
+            continue
+        seen_leads.add(key)      # also guards duplicates within one workbook
+        new_leads.append(lead)
+    skipped = len(leads) - len(new_leads)
+    print(f"  leads  {post('leads', new_leads)}" + (f" ({skipped} already present)" if skipped else ""))
 
     touches = build_touches(tracker, agent_ids)
-    print(f"  touches{post('touches', touches):>4}")
+    seen_touches = fetch_existing_touch_keys()
+    new_touches = [
+        t
+        for t in touches
+        if (t["agent_id"], t["channel"], t["occurred_at"][:10]) not in seen_touches
+    ]
+    print(f"  touches{post('touches', new_touches):>4}")
 
-    linked = sum(1 for lead in leads if lead["agent_id"])
-    print(f"\nDone. {linked}/{len(leads)} leads linked to an agent.")
+    linked = sum(1 for lead in new_leads if lead["agent_id"])
+    print(f"\nDone. {linked}/{len(new_leads)} imported leads linked to an agent.")
 
 
 if __name__ == "__main__":
