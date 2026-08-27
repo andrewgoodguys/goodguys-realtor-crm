@@ -10,3 +10,5 @@ __pycache__/
 exports/
 tsconfig.tsbuildinfo
 *.tsbuildinfo
+dev.log
+dev.err.log
