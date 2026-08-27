@@ -8,3 +8,5 @@ bun.lock
 __pycache__/
 *.pyc
 exports/
+tsconfig.tsbuildinfo
+*.tsbuildinfo
