@@ -4,7 +4,6 @@ dist
 .env.local
 *.local
 .DS_Store
-bun.lock
 __pycache__/
 *.pyc
 exports/
@@ -12,3 +11,4 @@ tsconfig.tsbuildinfo
 *.tsbuildinfo
 dev.log
 dev.err.log
+supabase/.temp/
