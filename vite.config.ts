@@ -11,5 +11,8 @@ export default defineConfig({
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
-  server: { port: 5174 },
+  // strictPort: a drifting port changes the OTP `emailRedirectTo`, and the new
+  // origin will not be in Supabase's redirect allow-list, so sign-in links
+  // silently stop working. Better to fail here than to debug that again.
+  server: { port: 5174, strictPort: true },
 });
