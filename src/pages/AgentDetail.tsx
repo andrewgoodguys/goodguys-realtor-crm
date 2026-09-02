@@ -13,6 +13,7 @@ import {
   useAgent,
   useCopy,
   useLeads,
+  useOfficesForBrokerage,
   usePeople,
   useTouches,
   useUpdateAgent,
@@ -28,6 +29,7 @@ import {
   CardHeader,
   EmptyState,
   ErrorState,
+  Input,
   Select,
   Spinner,
   Textarea,
@@ -43,6 +45,7 @@ export default function AgentDetail() {
   const touchesQ = useTouches(id);
   const update = useUpdateAgent();
   const peopleQ = usePeople();
+  const officesQ = useOfficesForBrokerage(agentQ.data?.brokerage);
   const copyText = useCopy();
 
   const [tab, setTab] = useState<Tab>("overview");
@@ -96,7 +99,10 @@ export default function AgentDetail() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <h1 className="text-xl font-semibold">{agent.name}</h1>
-            <p className="muted text-sm">{agent.brokerage ?? "Brokerage unknown"}</p>
+            <p className="muted text-sm">
+              {agent.brokerage ?? "Brokerage unknown"}
+              {agent.office && <> &middot; {agent.office} office</>}
+            </p>
             <div className="mt-2 flex flex-wrap gap-2">
               <Badge tone="brand">Priority {Math.round(agent.priority)}</Badge>
               {agent.owner_name && <Badge tone="info">{agent.owner_name}</Badge>}
@@ -179,6 +185,26 @@ export default function AgentDetail() {
               <Row label="Email" value={agent.email ?? "—"} />
             </dl>
             <div className="space-y-3 border-t border-[var(--border)] p-4">
+              <label className="block space-y-1.5">
+                <span className="text-sm font-medium">Office</span>
+                <Input
+                  list="office-suggestions"
+                  placeholder={agent.brokerage ? "Alpharetta, Buckhead…" : "Set a brokerage first"}
+                  defaultValue={agent.office ?? ""}
+                  onBlur={(e) => {
+                    const office = e.target.value.trim() || null;
+                    if (office !== (agent.office ?? null)) {
+                      update.mutate({ id: agent.id, patch: { office } });
+                    }
+                  }}
+                />
+                <datalist id="office-suggestions">
+                  {(officesQ.data ?? []).map((o) => (
+                    <option key={o} value={o} />
+                  ))}
+                </datalist>
+              </label>
+
               <label className="block space-y-1.5">
                 <span className="text-sm font-medium">Assigned to</span>
                 <Select

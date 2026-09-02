@@ -9,6 +9,9 @@ export interface Agent {
   name: string;
   name_key: string;
   brokerage: string | null;
+  /** Branch within the brokerage. Kept out of `brokerage` so the
+   *  ownership hash in pipeline/owners.py stays stable. */
+  office: string | null;
   phone: string | null;
   phone_type: PhoneType;
   email: string | null;

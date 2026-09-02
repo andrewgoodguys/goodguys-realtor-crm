@@ -42,7 +42,9 @@ export function useAgents(filters: AgentFilters = {}) {
 
       if (filters.search?.trim()) {
         const term = `%${filters.search.trim()}%`;
-        q = q.or(`name.ilike.${term},brokerage.ilike.${term},phone.ilike.${term}`);
+        q = q.or(
+          `name.ilike.${term},brokerage.ilike.${term},office.ilike.${term},phone.ilike.${term}`,
+        );
       }
       if (filters.owner) q = q.eq("owner_name", filters.owner);
       if (filters.status) q = q.eq("relationship_status", filters.status);
@@ -353,4 +355,24 @@ export function useCopy(): Copy {
     call_script: data.call_script,
     call_script_repeat: data.call_script_repeat,
   };
+}
+
+/* ----------------------------------------------------------------- offices */
+
+/** Offices already recorded at this brokerage, to suggest in the picker.
+ *  Free text with suggestions rather than a lookup table: brokerage itself is
+ *  free text, and a table would be one more thing to keep tidy. */
+export function useOfficesForBrokerage(brokerage: string | null | undefined) {
+  return useQuery({
+    queryKey: ["offices", brokerage ?? ""],
+    enabled: !!brokerage,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("offices_for_brokerage", {
+        brokerage_name: brokerage,
+      });
+      if (error) throw error;
+      return ((data ?? []) as Array<{ office: string }>).map((r) => r.office);
+    },
+  });
 }

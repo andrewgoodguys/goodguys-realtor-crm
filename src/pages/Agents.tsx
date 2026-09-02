@@ -130,8 +130,11 @@ export default function Agents() {
                           </Badge>
                         )}
                       </Td>
-                      <Td className="muted hidden max-w-48 truncate md:table-cell">
-                        {a.brokerage ?? "—"}
+                      <Td className="muted hidden max-w-48 md:table-cell">
+                        <div className="truncate">{a.brokerage ?? "—"}</div>
+                        {a.office && (
+                          <div className="truncate text-xs opacity-70">{a.office}</div>
+                        )}
                       </Td>
                       <Td className="nums whitespace-nowrap">{fmtPhone(a.phone)}</Td>
                       <Td className="nums hidden lg:table-cell">{a.lifetime_jobs}</Td>
