@@ -1,4 +1,5 @@
-export type Owner = "Andrew" | "Avery";
+/** Free text now that public.people is the list; see OWNERS for the seed. */
+export type Owner = string;
 export type PhoneType = "direct" | "office" | "unknown";
 export type AgentRole = "listing" | "buying";
 export type Channel = "call" | "text" | "email" | "note" | "meeting";
@@ -113,6 +114,10 @@ export const CALL_OUTCOMES = [
   "Referral promised",
 ] as const;
 
+/** Seed of public.people, kept as the fallback when that query has not
+ *  resolved yet. Mirrors OWNERS in pipeline/config.py. */
+export const OWNERS: Owner[] = ["Andrew", "Avery"];
+
 export const RELATIONSHIP_STATUSES = [
   "New — not contacted",
   "Contacted",
@@ -121,3 +126,42 @@ export const RELATIONSHIP_STATUSES = [
   "Not interested",
   "DO NOT CONTACT",
 ] as const;
+
+export interface Person {
+  name: string;
+  active: boolean;
+  sort_order: number;
+  created_at: string;
+}
+
+/** The single row of public.settings. */
+export interface Settings {
+  id: boolean;
+
+  app_name: string;
+  logo_url: string | null;
+  accent_color: string;
+  login_blurb: string;
+
+  follow_up_days: number;
+  due_window_days: number;
+  default_owner: string | null;
+
+  signature: string;
+  text_template: string;
+  email_subject: string;
+  email_body: string;
+  call_script: string;
+  call_script_repeat: string;
+
+  updated_at: string;
+  updated_by: string | null;
+}
+
+/** The cosmetic subset of settings, readable before sign-in via public.branding. */
+export interface Branding {
+  app_name: string;
+  logo_url: string | null;
+  accent_color: string;
+  login_blurb: string;
+}

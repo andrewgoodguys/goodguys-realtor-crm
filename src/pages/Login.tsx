@@ -1,11 +1,13 @@
 import { useState, type FormEvent } from "react";
 import { Mail, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useBranding } from "@/hooks/useData";
 import { ALLOWED_DOMAIN } from "@/lib/supabase";
 import { Button, Card, Field, Input } from "@/components/ui";
 
 export default function Login() {
   const { signInWithOtp, verifyOtp } = useAuth();
+  const branding = useBranding().data;
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [sent, setSent] = useState(false);
@@ -44,9 +46,11 @@ export default function Login() {
           <div className="mx-auto mb-3 flex size-11 items-center justify-center rounded-xl bg-brand-100 text-brand-700 dark:bg-brand-900 dark:text-brand-200">
             <ShieldCheck className="size-6" />
           </div>
-          <h1 className="text-lg font-semibold">GoodGuys Realtor CRM</h1>
+          <h1 className="text-lg font-semibold">
+            {branding?.app_name ?? "GoodGuys Realtor CRM"}
+          </h1>
           <p className="muted mt-1 text-sm">
-            Sign in with your @{ALLOWED_DOMAIN} email
+            {branding?.login_blurb ?? `Sign in with your @${ALLOWED_DOMAIN} email`}
           </p>
         </div>
 

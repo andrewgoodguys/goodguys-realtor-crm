@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import {
   BarChart3,
@@ -6,8 +7,11 @@ import {
   MapPinned,
   PhoneCall,
   ScrollText,
+  SlidersHorizontal,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useBranding } from "@/hooks/useData";
+import { applyAccent } from "@/lib/branding";
 import { isAllowedEmail, ALLOWED_DOMAIN } from "@/lib/supabase";
 import { Button, Spinner, cn } from "@/components/ui";
 import Login from "@/pages/Login";
@@ -17,6 +21,7 @@ import Agents from "@/pages/Agents";
 import AgentDetail from "@/pages/AgentDetail";
 import Leads from "@/pages/Leads";
 import RunLog from "@/pages/RunLog";
+import Settings from "@/pages/Settings";
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: BarChart3, end: true },
@@ -24,10 +29,18 @@ const NAV = [
   { to: "/agents", label: "Agents", icon: Building2, end: false },
   { to: "/leads", label: "Leads", icon: MapPinned, end: false },
   { to: "/runs", label: "Run log", icon: ScrollText, end: false },
+  { to: "/settings", label: "Settings", icon: SlidersHorizontal, end: false },
 ];
 
 export default function App() {
   const { session, email, loading, signOut } = useAuth();
+  const branding = useBranding().data;
+
+  // Ahead of the session check: the login screen is branded too.
+  useEffect(() => {
+    applyAccent(branding?.accent_color);
+    document.title = branding?.app_name ?? "GoodGuys Realtor CRM";
+  }, [branding?.accent_color, branding?.app_name]);
 
   if (loading) return <Spinner label="Loading…" />;
   if (!session) return <Login />;
@@ -51,8 +64,15 @@ export default function App() {
     <div className="flex min-h-full flex-col">
       <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[var(--surface)]">
         <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4">
-          <span className="font-semibold tracking-tight whitespace-nowrap">
-            GoodGuys <span className="text-brand-600">Realtor CRM</span>
+          <span className="flex items-center gap-2 font-semibold tracking-tight whitespace-nowrap">
+            {branding?.logo_url && (
+              <img src={branding.logo_url} alt="" className="size-6 rounded object-contain" />
+            )}
+            {branding?.app_name ?? (
+              <>
+                GoodGuys <span className="text-brand-600">Realtor CRM</span>
+              </>
+            )}
           </span>
 
           <nav className="ml-4 hidden gap-1 md:flex">
@@ -93,6 +113,7 @@ export default function App() {
           <Route path="/agents/:id" element={<AgentDetail />} />
           <Route path="/leads" element={<Leads />} />
           <Route path="/runs" element={<RunLog />} />
+          <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

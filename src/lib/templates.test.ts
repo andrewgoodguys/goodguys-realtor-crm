@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { callScript, clientRole, direction, emailMessage, firstName, textMessage } from "./templates";
+import {
+  DEFAULT_COPY,
+  callScript,
+  clientRole,
+  direction,
+  emailMessage,
+  firstName,
+  render,
+  textMessage,
+  type Copy,
+} from "./templates";
 import { dialable, fmtPhone, isPlaceholder, priorityTone } from "./format";
 
 describe("voice", () => {
@@ -81,5 +91,56 @@ describe("priority", () => {
     expect(priorityTone(79.8)).toBe("high");
     expect(priorityTone(50)).toBe("medium");
     expect(priorityTone(20)).toBe("low");
+  });
+});
+
+describe("editable copy", () => {
+  it("substitutes placeholders and leaves unknown ones visible", () => {
+    // Silently dropping a typo would make it look like the field saved fine.
+    expect(render("Hi {{first_name}}, re {{nope}}", { first_name: "Dana" })).toBe(
+      "Hi Dana, re {{nope}}",
+    );
+  });
+
+  it("uses copy from settings in place of the built-in wording", () => {
+    const copy: Copy = {
+      ...DEFAULT_COPY,
+      text_template: "{{first_name}}: we moved your {{client_role}} to {{address}}.",
+    };
+    expect(textMessage("Dana Reed", "the Whitfields", "412 Ashwood Ln", "listing", copy)).toBe(
+      "Dana: we moved your seller to 412 Ashwood Ln.",
+    );
+  });
+
+  it("closes a rewritten email with the configured signature", () => {
+    const copy: Copy = {
+      ...DEFAULT_COPY,
+      email_body: "Hi {{first_name}}.\n\n{{signature}}",
+      signature: "Avery",
+    };
+    const { body } = emailMessage(
+      "Dana Reed",
+      [{ client_name: "the Whitfields", address: "412 Ashwood Ln", side: "buying" }],
+      copy,
+    );
+    expect(body).toBe("Hi Dana.\n\nAvery");
+  });
+
+  it("keeps the repeat-client beat in fourth place after a rewrite", () => {
+    const copy: Copy = { ...DEFAULT_COPY, call_script: "one\ntwo\nthree\nfour" };
+    const clients = [
+      { client_name: "A", address: "1 St", side: "listing" as const },
+      { client_name: "B", address: "2 St", side: "listing" as const },
+    ];
+    const beats = callScript("Dana Reed", clients, copy);
+    expect(beats[3]).toBe("That's actually the second client of yours we've moved now.");
+    expect(beats[4]).toBe("four");
+  });
+
+  it("drops blank lines so a stray newline does not become an empty beat", () => {
+    const copy: Copy = { ...DEFAULT_COPY, call_script: "one\n\n  \ntwo\n" };
+    expect(
+      callScript("Dana", [{ client_name: "A", address: "1 St", side: null }], copy),
+    ).toEqual(["one", "two"]);
   });
 });

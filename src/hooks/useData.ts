@@ -1,6 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
-import type { Agent, DueThisWeekRow, Lead, Run, Touch } from "@/lib/types";
+import { DEFAULT_COPY, type Copy } from "@/lib/templates";
+import type {
+  Agent,
+  Branding,
+  DueThisWeekRow,
+  Lead,
+  Person,
+  Run,
+  Settings,
+  Touch,
+} from "@/lib/types";
 import { useAuth } from "./useAuth";
 
 /** Anything that changes an agent invalidates these. */
@@ -223,4 +233,124 @@ export function useDashboardStats() {
       };
     },
   });
+}
+
+/* ---------------------------------------------------------------- settings */
+
+/** The one settings row. Cached hard: it changes about once a month, and
+ *  everything from branding to outreach copy reads through it. */
+export function useSettings() {
+  return useQuery({
+    queryKey: ["settings"],
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () =>
+      unwrap(await supabase.from("settings").select("*").eq("id", true).single()) as Settings,
+  });
+}
+
+export function useUpdateSettings() {
+  const qc = useQueryClient();
+  const { user } = useAuth();
+  return useMutation({
+    mutationFn: async (patch: Partial<Settings>) => {
+      const next = unwrap(
+        await supabase
+          .from("settings")
+          .update({ ...patch, updated_by: user?.id ?? null })
+          .eq("id", true)
+          .select()
+          .single(),
+      ) as Settings;
+
+      // A new cadence should move every open follow-up, not just the next one
+      // logged against an agent.
+      if (patch.follow_up_days !== undefined) {
+        const { error } = await supabase.rpc("reschedule_follow_ups");
+        if (error) throw error;
+      }
+      return next;
+    },
+    onSuccess: (_next, patch) => {
+      qc.invalidateQueries({ queryKey: ["settings"] });
+      if (patch.follow_up_days !== undefined || patch.due_window_days !== undefined) {
+        invalidateAgentViews(qc);
+      }
+    },
+  });
+}
+
+/* ------------------------------------------------------------------ people */
+
+export function usePeople(includeInactive = false) {
+  return useQuery({
+    queryKey: ["people", includeInactive],
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      let q = supabase.from("people").select("*").order("sort_order");
+      if (!includeInactive) q = q.eq("active", true);
+      return unwrap(await q) as Person[];
+    },
+  });
+}
+
+export function useAddPerson() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ name, sortOrder }: { name: string; sortOrder: number }) =>
+      unwrap(
+        await supabase
+          .from("people")
+          .insert({ name: name.trim(), sort_order: sortOrder })
+          .select()
+          .single(),
+      ) as Person,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["people"] }),
+  });
+}
+
+export function useUpdatePerson() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ name, patch }: { name: string; patch: Partial<Person> }) =>
+      unwrap(
+        await supabase.from("people").update(patch).eq("name", name).select().single(),
+      ) as Person,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["people"] });
+      // Renaming cascades to agents.owner_name, so those views are now stale.
+      invalidateAgentViews(qc);
+    },
+  });
+}
+
+/* ---------------------------------------------------------------- branding */
+
+/** Reads the anon-visible view, so the login screen is branded too. Failure is
+ *  not an error worth showing: the app falls back to its built-in look. */
+export function useBranding() {
+  return useQuery({
+    queryKey: ["branding"],
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+    queryFn: async () => {
+      const { data } = await supabase.from("branding").select("*").maybeSingle();
+      return (data as Branding | null) ?? null;
+    },
+  });
+}
+
+/** The outreach wording every message screen should use. Falls back to the
+ *  built-in copy while the settings query is in flight, so a message is never
+ *  rendered half-empty. */
+export function useCopy(): Copy {
+  const { data } = useSettings();
+  if (!data) return DEFAULT_COPY;
+  return {
+    signature: data.signature,
+    text_template: data.text_template,
+    email_subject: data.email_subject,
+    email_body: data.email_body,
+    call_script: data.call_script,
+    call_script_repeat: data.call_script_repeat,
+  };
 }

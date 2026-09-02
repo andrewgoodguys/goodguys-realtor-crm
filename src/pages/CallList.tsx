@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Check, Copy, MailPlus, MessageSquare, PhoneCall, PhoneOff } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { useDueThisWeek } from "@/hooks/useData";
+import { useCopy, useDueThisWeek } from "@/hooks/useData";
 import { dialable, fmtDate, fmtPhone, isPlaceholder, priorityTone } from "@/lib/format";
 import { emailMessage, textMessage } from "@/lib/templates";
 import type { DueThisWeekRow } from "@/lib/types";
@@ -101,6 +101,7 @@ export default function CallList() {
 
 function CallCard({ agent, onLog }: { agent: DueThisWeekRow; onLog: () => void }) {
   const [copied, setCopied] = useState<string | null>(null);
+  const copyText = useCopy();
   const phone = dialable(agent.phone);
   const tone = priorityTone(agent.priority);
 
@@ -111,8 +112,9 @@ function CallCard({ agent, onLog }: { agent: DueThisWeekRow; onLog: () => void }
         agent.recent_customer ?? "your client",
         agent.recent_address ?? "their new home",
         agent.recent_role,
+        copyText,
       ),
-    [agent],
+    [agent, copyText],
   );
 
   const email = useMemo(
@@ -123,8 +125,8 @@ function CallCard({ agent, onLog }: { agent: DueThisWeekRow; onLog: () => void }
           address: agent.recent_address ?? "their new home",
           side: agent.recent_role,
         },
-      ]),
-    [agent],
+      ], copyText),
+    [agent, copyText],
   );
 
   async function copy(label: string, text: string) {

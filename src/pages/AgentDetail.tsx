@@ -9,10 +9,17 @@ import {
   MessageSquare,
   PhoneCall,
 } from "lucide-react";
-import { useAgent, useLeads, useTouches, useUpdateAgent } from "@/hooks/useData";
+import {
+  useAgent,
+  useCopy,
+  useLeads,
+  usePeople,
+  useTouches,
+  useUpdateAgent,
+} from "@/hooks/useData";
 import { dialable, fmtDate, fmtMoney, fmtPhone, isPlaceholder } from "@/lib/format";
 import { callScript, emailMessage, textMessage, type ClientRef } from "@/lib/templates";
-import { RELATIONSHIP_STATUSES } from "@/lib/types";
+import { OWNERS, RELATIONSHIP_STATUSES } from "@/lib/types";
 import LogTouchDialog from "@/components/LogTouchDialog";
 import {
   Badge,
@@ -35,6 +42,8 @@ export default function AgentDetail() {
   const leadsQ = useLeads({ agentId: id });
   const touchesQ = useTouches(id);
   const update = useUpdateAgent();
+  const peopleQ = usePeople();
+  const copyText = useCopy();
 
   const [tab, setTab] = useState<Tab>("overview");
   const [logging, setLogging] = useState(false);
@@ -61,8 +70,14 @@ export default function AgentDetail() {
     address: "their new home",
     side: null,
   };
-  const message = textMessage(agent.name, primary.client_name, primary.address, primary.side);
-  const email = emailMessage(agent.name, [primary]);
+  const message = textMessage(
+    agent.name,
+    primary.client_name,
+    primary.address,
+    primary.side,
+    copyText,
+  );
+  const email = emailMessage(agent.name, [primary], copyText);
 
   async function copy(label: string, text: string) {
     await navigator.clipboard.writeText(text);
@@ -164,6 +179,31 @@ export default function AgentDetail() {
               <Row label="Email" value={agent.email ?? "—"} />
             </dl>
             <div className="space-y-3 border-t border-[var(--border)] p-4">
+              <label className="block space-y-1.5">
+                <span className="text-sm font-medium">Assigned to</span>
+                <Select
+                  value={agent.owner_name ?? ""}
+                  onChange={(e) =>
+                    update.mutate({
+                      id: agent.id,
+                      patch: { owner_name: e.target.value || null },
+                    })
+                  }
+                >
+                  <option value="">Unassigned</option>
+                  {(peopleQ.data?.map((p) => p.name) ?? OWNERS).map((o) => (
+                    <option key={o} value={o}>
+                      {o}
+                    </option>
+                  ))}
+                  {/* Whoever owns this today may since have been deactivated. */}
+                  {agent.owner_name &&
+                    !(peopleQ.data ?? []).some((p) => p.name === agent.owner_name) && (
+                      <option value={agent.owner_name}>{agent.owner_name} (inactive)</option>
+                    )}
+                </Select>
+              </label>
+
               <label className="block space-y-1.5">
                 <span className="text-sm font-medium">Relationship status</span>
                 <Select
@@ -270,7 +310,7 @@ export default function AgentDetail() {
               }
             />
             <ol className="space-y-3 p-4 text-sm">
-              {callScript(agent.name, clients.length ? clients : [primary]).map((beat, i) => (
+              {callScript(agent.name, clients.length ? clients : [primary], copyText).map((beat, i) => (
                 <li key={i} className="flex gap-3">
                   <span className="muted nums shrink-0 tabular-nums">{i + 1}.</span>
                   <span>{beat}</span>
