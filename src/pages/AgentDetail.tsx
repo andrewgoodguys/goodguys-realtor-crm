@@ -18,7 +18,14 @@ import {
   useTouches,
   useUpdateAgent,
 } from "@/hooks/useData";
-import { dialable, fmtDate, fmtMoney, fmtPhone, isPlaceholder } from "@/lib/format";
+import {
+  dialable,
+  fmtDate,
+  fmtMoney,
+  fmtPhone,
+  isPlaceholder,
+  smartMovingLink,
+} from "@/lib/format";
 import { callScript, emailMessage, textMessage, type ClientRef } from "@/lib/templates";
 import { OWNERS, RELATIONSHIP_STATUSES } from "@/lib/types";
 import LogTouchDialog from "@/components/LogTouchDialog";
@@ -100,7 +107,16 @@ export default function AgentDetail() {
           <div className="min-w-0">
             <h1 className="text-xl font-semibold">{agent.name}</h1>
             <p className="muted text-sm">
-              {agent.brokerage ?? "Brokerage unknown"}
+              {agent.brokerage ? (
+                <Link
+                  to={`/brokerages/${encodeURIComponent(agent.brokerage)}`}
+                  className="hover:text-brand-600 hover:underline"
+                >
+                  {agent.brokerage}
+                </Link>
+              ) : (
+                "Brokerage unknown"
+              )}
               {agent.office && <> &middot; {agent.office} office</>}
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -288,35 +304,48 @@ export default function AgentDetail() {
               <EmptyState title="No linked jobs" />
             ) : (
               <ul className="divide-y divide-[var(--border)]">
-                {leadsQ.data.map((l) => (
-                  <li key={l.id} className="px-4 py-3 text-sm">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-medium">{l.customer_name ?? "—"}</p>
-                        <p className="muted truncate">{l.house_address ?? "—"}</p>
+                {leadsQ.data.map((l) => {
+                  const smUrl = smartMovingLink(l.job?.sm_opportunity_id, l.job?.sm_job_id);
+                  return (
+                    <li key={l.id} className="px-4 py-3 text-sm">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-medium">{l.customer_name ?? "—"}</p>
+                          <p className="muted truncate">{l.house_address ?? "—"}</p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <Badge tone={l.agent_role === "listing" ? "brand" : "info"}>
+                            {l.agent_role === "listing" ? "seller" : "buyer"}
+                          </Badge>
+                          <p className="nums muted mt-1 text-xs">{fmtMoney(l.job_revenue)}</p>
+                        </div>
                       </div>
-                      <div className="shrink-0 text-right">
-                        <Badge tone={l.agent_role === "listing" ? "brand" : "info"}>
-                          {l.agent_role === "listing" ? "seller" : "buyer"}
-                        </Badge>
-                        <p className="nums muted mt-1 text-xs">{fmtMoney(l.job_revenue)}</p>
-                      </div>
-                    </div>
-                    <p className="muted mt-1 flex items-center gap-2 text-xs">
-                      {l.job_number} · moved {fmtDate(l.job_date)} · sold {fmtDate(l.sale_date)}
-                      {l.redfin_link && (
-                        <a
-                          href={l.redfin_link}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-0.5 text-brand-600 hover:underline"
-                        >
-                          Redfin <ExternalLink className="size-3" />
-                        </a>
-                      )}
-                    </p>
-                  </li>
-                ))}
+                      <p className="muted mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                        {l.job_number} · moved {fmtDate(l.job_date)} · sold {fmtDate(l.sale_date)}
+                        {smUrl && (
+                          <a
+                            href={smUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-0.5 text-brand-600 hover:underline"
+                          >
+                            SmartMoving <ExternalLink className="size-3" />
+                          </a>
+                        )}
+                        {l.redfin_link && (
+                          <a
+                            href={l.redfin_link}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-0.5 text-brand-600 hover:underline"
+                          >
+                            Redfin <ExternalLink className="size-3" />
+                          </a>
+                        )}
+                      </p>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </Card>

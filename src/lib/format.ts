@@ -62,3 +62,22 @@ export function priorityTone(priority: number): "high" | "medium" | "low" {
   if (priority >= 45) return "medium";
   return "low";
 }
+
+/** The SmartMoving page for a job, or null.
+ *
+ *  Needs both ids: the opportunity GUID is the path, the job GUID is the
+ *  `jobId` parameter that picks the right job within it. The export only ever
+ *  had the second, so `sm_opportunity_id` is null until
+ *  scripts/backfill_sm_opportunity_ids.py has resolved that job's quote —
+ *  hence null rather than a link that lands on "opportunity was not found".
+ */
+export function smartMovingLink(
+  opportunityId: string | null | undefined,
+  jobId?: string | null,
+): string | null {
+  if (!opportunityId?.trim()) return null;
+  const base = `https://app.smartmoving.com/opportunities/${encodeURIComponent(
+    opportunityId.trim(),
+  )}/sales`;
+  return jobId?.trim() ? `${base}?jobId=${encodeURIComponent(jobId.trim())}` : base;
+}

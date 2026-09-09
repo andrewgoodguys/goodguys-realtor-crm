@@ -51,6 +51,10 @@ export interface Lead {
   job_revenue: number | null;
   redfin_link: string | null;
   created_at: string;
+
+  /** Embedded from jobs by useLeads, for the SmartMoving link. Absent — not
+   *  null — on any query that does not ask for it. */
+  job?: Pick<Job, "sm_job_id" | "sm_opportunity_id"> | null;
 }
 
 export interface Touch {
@@ -70,6 +74,7 @@ export interface Touch {
 export interface Job {
   id: string;
   sm_job_id: string | null;
+  sm_opportunity_id: string | null;
   job_number: string | null;
   opportunity_status: string | null;
   job_date: string | null;
@@ -85,6 +90,21 @@ export interface Job {
   origin_address: string | null;
   destination_address: string | null;
   imported_at: string;
+}
+
+/** A row of public.brokerage_summary — one firm, rolled up. */
+export interface BrokerageSummary {
+  brokerage: string;
+  agent_count: number;
+  office_count: number;
+  unplaced_count: number;
+  dnc_count: number;
+  due_count: number;
+  lifetime_jobs: number;
+  lifetime_revenue: number;
+  most_recent_job: string | null;
+  top_priority: number | null;
+  owners: string | null;
 }
 
 export interface Run {

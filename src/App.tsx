@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import {
   BarChart3,
+  Building,
   Building2,
   LogOut,
   MapPinned,
@@ -19,6 +20,8 @@ import Dashboard from "@/pages/Dashboard";
 import CallList from "@/pages/CallList";
 import Agents from "@/pages/Agents";
 import AgentDetail from "@/pages/AgentDetail";
+import Brokerages from "@/pages/Brokerages";
+import BrokerageDetail from "@/pages/BrokerageDetail";
 import Leads from "@/pages/Leads";
 import RunLog from "@/pages/RunLog";
 import Settings from "@/pages/Settings";
@@ -27,6 +30,7 @@ const NAV = [
   { to: "/", label: "Dashboard", icon: BarChart3, end: true },
   { to: "/calls", label: "Call list", icon: PhoneCall, end: false },
   { to: "/agents", label: "Agents", icon: Building2, end: false },
+  { to: "/brokerages", label: "Brokerages", short: "Firms", icon: Building, end: false },
   { to: "/leads", label: "Leads", icon: MapPinned, end: false },
   { to: "/runs", label: "Run log", icon: ScrollText, end: false },
   { to: "/settings", label: "Settings", icon: SlidersHorizontal, end: false },
@@ -111,6 +115,8 @@ export default function App() {
           <Route path="/calls" element={<CallList />} />
           <Route path="/agents" element={<Agents />} />
           <Route path="/agents/:id" element={<AgentDetail />} />
+          <Route path="/brokerages" element={<Brokerages />} />
+          <Route path="/brokerages/:brokerage" element={<BrokerageDetail />} />
           <Route path="/leads" element={<Leads />} />
           <Route path="/runs" element={<RunLog />} />
           <Route path="/settings" element={<Settings />} />
@@ -119,8 +125,8 @@ export default function App() {
       </main>
 
       {/* Bottom bar on phones — this app gets used standing in a driveway. */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-[var(--border)] bg-[var(--surface)] pb-[env(safe-area-inset-bottom)] md:hidden">
-        {NAV.map(({ to, label, icon: Icon, end }) => (
+      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-7 border-t border-[var(--border)] bg-[var(--surface)] pb-[env(safe-area-inset-bottom)] md:hidden">
+        {NAV.map(({ to, label, short, icon: Icon, end }) => (
           <NavLink
             key={to}
             to={to}
@@ -133,7 +139,7 @@ export default function App() {
             }
           >
             <Icon className="size-5" />
-            {label}
+            {short ?? label}
           </NavLink>
         ))}
       </nav>

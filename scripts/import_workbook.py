@@ -36,6 +36,8 @@ try:
 except ImportError:
     sys.exit("pip install openpyxl")
 
+from brokerages import split_brokerage
+
 WORKBOOK = Path(
     os.environ.get(
         "GG_WORKBOOK",
@@ -143,6 +145,28 @@ def name_key(name: str) -> str:
     return _WS.sub(" ", (name or "").strip().lower())
 
 
+# Column A of Outreach Tracker holds more than agents: the cadence rules and a
+# couple of footnotes were typed into it as free text, and a row with something
+# in Agent Name used to be enough to create an agent. Eight cadence rows got in
+# that way, plus a "— not reported to MLS" footnote from an older copy of the
+# workbook (see supabase/migrations/0006_cadence_out_of_agents.sql). A name does not
+# open with a numbered bullet or a dash, does not run to sentence length, and
+# comes with at least one of office, phone or email.
+_NOT_A_NAME = re.compile(r"^\s*(?:\d+\s*[.)]|[-‐-―•*])")
+MAX_NAME_LEN = 60
+
+
+def is_person_row(row) -> bool:
+    name = (row.get("Agent Name") or "").strip()
+    if not name:
+        return False
+    if _NOT_A_NAME.match(name):
+        return False
+    if len(name) > MAX_NAME_LEN:
+        return False
+    return any(row.get(c) for c in ("Office", "Phone", "Email"))
+
+
 def phone_type_of(phone, office_hint=None) -> str:
     p = (phone or "").strip().lower()
     if not p or p.startswith("tbd"):
@@ -215,6 +239,14 @@ def get(path: str):
     )
     with urllib.request.urlopen(req) as resp:
         return json.loads(resp.read())
+
+
+def fetch_job_ids() -> dict[str, str]:
+    """job_number -> uuid. leads.job_id is what reaches jobs.sm_opportunity_id,
+    which is what puts a SmartMoving link on a move; without it the lead knows
+    the job number and nothing else. job_number is unique across all 877 rows."""
+    rows = get("jobs?select=id,job_number&limit=100000")
+    return {r["job_number"]: r["id"] for r in rows if r["job_number"]}
 
 
 def fetch_agent_ids() -> dict[str, str]:
@@ -300,17 +332,22 @@ def build_agents(tracker, summary) -> list[dict]:
         if r.get("Agent Name")
     }
 
-    out, seen = [], set()
+    out, seen, skipped = [], set(), []
     for r in tracker:
         name = r.get("Agent Name")
-        if not name:
+        if not is_person_row(r):
+            if name:
+                skipped.append(str(name).strip())
             continue
         key = name_key(name)
         if key in seen:  # one row per agent, forever
             continue
         seen.add(key)
 
-        office = r.get("Office")
+        # The Office column is really the brokerage, sometimes with the branch
+        # welded on. split_brokerage separates them; owner still hashes on the
+        # brokerage alone, so the two halves of a firm stay with one person.
+        brokerage, office = split_brokerage(r.get("Office"))
         status = r.get("Relationship Status") or "New — not contacted"
         dnc = "do not contact" in status.lower()
 
@@ -318,11 +355,12 @@ def build_agents(tracker, summary) -> list[dict]:
             {
                 "name": name,
                 "name_key": key,
-                "brokerage": office,
+                "brokerage": brokerage,
+                "office": office,
                 "phone": r.get("Phone"),
-                "phone_type": phone_type_of(r.get("Phone"), office),
+                "phone_type": phone_type_of(r.get("Phone"), r.get("Office")),
                 "email": r.get("Email"),
-                "owner_name": owner_for_brokerage(office or ""),
+                "owner_name": owner_for_brokerage(brokerage or ""),
                 "lifetime_jobs": as_int(r.get("# Jobs (lifetime)")) or 0,
                 "lifetime_revenue": revenue_by_key.get(key, 0),
                 "most_recent_job": as_date(r.get("Most Recent Job")),
@@ -334,10 +372,16 @@ def build_agents(tracker, summary) -> list[dict]:
                 "notes": r.get("Notes"),
             }
         )
+
+    if skipped:
+        print(f"  skipped {len(skipped)} non-agent row(s) in Outreach Tracker:")
+        for s_name in skipped:
+            print(f"    - {s_name[:70]}")
+
     return out
 
 
-def build_leads(rows, agent_ids) -> list[dict]:
+def build_leads(rows, agent_ids, job_ids) -> list[dict]:
     out, seen = [], set()
     for r in rows:
         address = r.get("House Address")
@@ -352,10 +396,12 @@ def build_leads(rows, agent_ids) -> list[dict]:
             seen.add(dedupe)
 
         agent_name = r.get("Agent Name")
+        job_number = r.get("Job #")
         out.append(
             {
                 "week_added": r.get("Week Added"),
-                "job_number": r.get("Job #"),
+                "job_number": job_number,
+                "job_id": job_ids.get(str(job_number).strip()) if job_number else None,
                 "job_date": as_date(r.get("Job Date")),
                 "customer_name": r.get("Customer Name"),
                 "house_address": address,
@@ -483,9 +529,10 @@ def main() -> None:
 
     # Leads and touches need agent UUIDs, so they go after agents land.
     agent_ids = fetch_agent_ids()
-    print(f"  resolved {len(agent_ids)} agent ids")
+    job_ids = fetch_job_ids()
+    print(f"  resolved {len(agent_ids)} agent ids, {len(job_ids)} job ids")
 
-    leads = build_leads(outreach, agent_ids)
+    leads = build_leads(outreach, agent_ids, job_ids)
     seen_leads = fetch_existing_lead_keys()
     new_leads = []
     for lead in leads:

@@ -4,6 +4,7 @@ import { DEFAULT_COPY, type Copy } from "@/lib/templates";
 import type {
   Agent,
   Branding,
+  BrokerageSummary,
   DueThisWeekRow,
   Lead,
   Person,
@@ -31,6 +32,7 @@ export interface AgentFilters {
   search?: string;
   owner?: string;
   status?: string;
+  brokerage?: string;
   includeDnc?: boolean;
 }
 
@@ -46,6 +48,7 @@ export function useAgents(filters: AgentFilters = {}) {
           `name.ilike.${term},brokerage.ilike.${term},office.ilike.${term},phone.ilike.${term}`,
         );
       }
+      if (filters.brokerage) q = q.eq("brokerage", filters.brokerage);
       if (filters.owner) q = q.eq("owner_name", filters.owner);
       if (filters.status) q = q.eq("relationship_status", filters.status);
       if (!filters.includeDnc) q = q.eq("do_not_contact", false);
@@ -102,7 +105,9 @@ export function useLeads(opts: { agentId?: string; status?: string; search?: str
     queryFn: async () => {
       let q = supabase
         .from("leads")
-        .select("*")
+        // The SmartMoving link needs both of the job's ids, and leads holds
+        // neither — only the FK to jobs. One embed beats a second round trip.
+        .select("*, job:jobs(sm_job_id, sm_opportunity_id)")
         .order("job_date", { ascending: false, nullsFirst: false });
       if (opts.agentId) q = q.eq("agent_id", opts.agentId);
       if (opts.status) q = q.eq("status", opts.status);
@@ -355,6 +360,24 @@ export function useCopy(): Copy {
     call_script: data.call_script,
     call_script_repeat: data.call_script_repeat,
   };
+}
+
+/* ------------------------------------------------------------- brokerages */
+
+/** Every firm, biggest first. Reads the roll-up view, not agents, so the page
+ *  does not pull 186 rows to count them. */
+export function useBrokerages() {
+  return useQuery({
+    queryKey: ["brokerages"],
+    queryFn: async () =>
+      unwrap(
+        await supabase
+          .from("brokerage_summary")
+          .select("*")
+          .order("agent_count", { ascending: false })
+          .limit(500),
+      ) as BrokerageSummary[],
+  });
 }
 
 /* ----------------------------------------------------------------- offices */
