@@ -467,8 +467,17 @@ function People() {
               </>
             ) : (
               <>
-                <span className={p.active ? "font-medium" : "muted line-through"}>
-                  {p.name}
+                <span className="min-w-0">
+                  <span className={p.active ? "font-medium" : "muted line-through"}>
+                    {p.name}
+                  </span>
+                  {/* Which login this name belongs to. A name with no email is
+                      assignable but nobody is signed in as it — usually because
+                      they have not opened the app yet, occasionally because
+                      their address does not resemble their name. */}
+                  <span className="muted block truncate text-xs">
+                    {p.email ?? "not signed in yet"}
+                  </span>
                 </span>
                 <div className="ml-auto flex items-center gap-2">
                   <Button
@@ -523,8 +532,12 @@ function People() {
       </div>
 
       <p className="muted border-t border-[var(--border)] px-4 py-3 text-sm">
-        Renaming carries that person&rsquo;s agents with them. Deactivating hides them
-        from the assignment picker but leaves history intact — nobody is deleted.
+        Anyone with a GoodGuys address is added here the first time they sign in,
+        so this list is usually one you read rather than edit — add a name early
+        only if you want to assign agents to somebody before they arrive.
+        Renaming carries that person&rsquo;s agents with them. Deactivating hides
+        them from the assignment picker but leaves history intact — nobody is
+        deleted.
       </p>
     </Card>
   );

@@ -7,6 +7,8 @@ import type {
   BrokerageSummary,
   DueThisWeekRow,
   Lead,
+  OutreachStep,
+  OwnerWorkload,
   Person,
   Run,
   Settings,
@@ -19,6 +21,7 @@ function invalidateAgentViews(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ["agents"] });
   qc.invalidateQueries({ queryKey: ["due"] });
   qc.invalidateQueries({ queryKey: ["stats"] });
+  qc.invalidateQueries({ queryKey: ["workload"] });
 }
 
 function unwrap<T>({ data, error }: { data: T | null; error: unknown }): T {
@@ -27,6 +30,11 @@ function unwrap<T>({ data, error }: { data: T | null; error: unknown }): T {
 }
 
 /* ------------------------------------------------------------------ agents */
+
+/** `owner` is a person's name, or this — nobody. Kept distinct from undefined,
+ *  which means "any owner", because an agent with no owner is the one state
+ *  worth going looking for: nobody is calling them. */
+export const UNASSIGNED = "__unassigned__";
 
 export interface AgentFilters {
   search?: string;
@@ -49,11 +57,34 @@ export function useAgents(filters: AgentFilters = {}) {
         );
       }
       if (filters.brokerage) q = q.eq("brokerage", filters.brokerage);
-      if (filters.owner) q = q.eq("owner_name", filters.owner);
+      if (filters.owner === UNASSIGNED) q = q.is("owner_name", null);
+      else if (filters.owner) q = q.eq("owner_name", filters.owner);
       if (filters.status) q = q.eq("relationship_status", filters.status);
       if (!filters.includeDnc) q = q.eq("do_not_contact", false);
 
       return unwrap(await q.limit(500)) as Agent[];
+    },
+  });
+}
+
+/** Hand a batch of agents to somebody, or to nobody. One statement, because
+ *  taking twenty agents off the unassigned list should be one decision and one
+ *  undo, not twenty rows arriving one at a time.
+ *
+ *  Who did it and when is stamped by a trigger (0010), not sent from here — a
+ *  reassignment made from a script should leave the same trail as this one. */
+export function useAssignAgents() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ ids, owner }: { ids: string[]; owner: string | null }) => {
+      if (ids.length === 0) return [] as Agent[];
+      return unwrap(
+        await supabase.from("agents").update({ owner_name: owner }).in("id", ids).select(),
+      ) as Agent[];
+    },
+    onSuccess: (agents) => {
+      invalidateAgentViews(qc);
+      for (const a of agents) qc.invalidateQueries({ queryKey: ["agents", "one", a.id] });
     },
   });
 }
@@ -193,8 +224,10 @@ export interface DashboardStats {
   contactedCount: number;
   respondedCount: number;
   touchesThisWeek: number;
-  splitAndrew: number;
-  splitAvery: number;
+  /** Active agents nobody owns. Was structurally impossible while the md5
+   *  split covered everyone; now that agents can be handed back, it is the
+   *  number that says work is falling through. */
+  unassignedCount: number;
   leadsFlagged: number;
 }
 
@@ -205,28 +238,23 @@ export function useDashboardStats() {
       const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString();
       const count = { count: "exact" as const, head: true };
 
-      const [
-        agents,
-        due,
-        contacted,
-        responded,
-        touches,
-        andrew,
-        avery,
-        flagged,
-      ] = await Promise.all([
-        supabase.from("agents").select("*", count).eq("do_not_contact", false),
-        supabase.from("due_this_week").select("*", count),
-        supabase
-          .from("agents")
-          .select("*", count)
-          .neq("relationship_status", "New — not contacted"),
-        supabase.from("touches").select("*", count).eq("got_response", true),
-        supabase.from("touches").select("*", count).gte("occurred_at", weekAgo),
-        supabase.from("agents").select("*", count).eq("owner_name", "Andrew"),
-        supabase.from("agents").select("*", count).eq("owner_name", "Avery"),
-        supabase.from("leads").select("*", count).ilike("status", "%manual%"),
-      ]);
+      const [agents, due, contacted, responded, touches, unassigned, flagged] =
+        await Promise.all([
+          supabase.from("agents").select("*", count).eq("do_not_contact", false),
+          supabase.from("due_this_week").select("*", count),
+          supabase
+            .from("agents")
+            .select("*", count)
+            .neq("relationship_status", "New — not contacted"),
+          supabase.from("touches").select("*", count).eq("got_response", true),
+          supabase.from("touches").select("*", count).gte("occurred_at", weekAgo),
+          supabase
+            .from("agents")
+            .select("*", count)
+            .is("owner_name", null)
+            .eq("do_not_contact", false),
+          supabase.from("leads").select("*", count).ilike("status", "%manual%"),
+        ]);
 
       return {
         totalAgents: agents.count ?? 0,
@@ -234,8 +262,7 @@ export function useDashboardStats() {
         contactedCount: contacted.count ?? 0,
         respondedCount: responded.count ?? 0,
         touchesThisWeek: touches.count ?? 0,
-        splitAndrew: andrew.count ?? 0,
-        splitAvery: avery.count ?? 0,
+        unassignedCount: unassigned.count ?? 0,
         leadsFlagged: flagged.count ?? 0,
       };
     },
@@ -300,6 +327,22 @@ export function usePeople(includeInactive = false) {
   });
 }
 
+/** One row per person, with what they are carrying. Everyone is listed,
+ *  including whoever owns nothing yet — that is the row worth acting on. */
+export function useOwnerWorkload() {
+  return useQuery({
+    queryKey: ["workload"],
+    queryFn: async () =>
+      unwrap(
+        await supabase
+          .from("owner_workload")
+          .select("*")
+          .eq("active", true)
+          .order("sort_order"),
+      ) as OwnerWorkload[],
+  });
+}
+
 export function useAddPerson() {
   const qc = useQueryClient();
   return useMutation({
@@ -327,6 +370,21 @@ export function useUpdatePerson() {
       // Renaming cascades to agents.owner_name, so those views are now stale.
       invalidateAgentViews(qc);
     },
+  });
+}
+
+/* ----------------------------------------------------------------- cadence */
+
+/** The intro sequence. Three rows since 0006, and until now nothing read
+ *  them — the cadence was recorded in the database and driving nothing. */
+export function useOutreachSteps() {
+  return useQuery({
+    queryKey: ["outreach_steps"],
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () =>
+      unwrap(
+        await supabase.from("outreach_steps").select("*").order("day_offset"),
+      ) as OutreachStep[],
   });
 }
 

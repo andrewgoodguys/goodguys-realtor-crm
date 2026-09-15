@@ -1,11 +1,22 @@
 import { Link } from "react-router-dom";
-import { ArrowRight, PhoneCall } from "lucide-react";
-import { useDashboardStats, useRecentTouches, useRuns } from "@/hooks/useData";
+import { ArrowRight, ListChecks, PhoneCall } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import {
+  UNASSIGNED,
+  useDashboardStats,
+  useOwnerWorkload,
+  useRecentTouches,
+  useRuns,
+} from "@/hooks/useData";
 import { fmtDate, fmtRelative } from "@/lib/format";
+import { isMissingSchema } from "@/lib/supabase";
+import type { OwnerWorkload } from "@/lib/types";
 import { Badge, Card, CardHeader, EmptyState, ErrorState, Spinner, Stat } from "@/components/ui";
 
 export default function Dashboard() {
+  const { owner } = useAuth();
   const stats = useDashboardStats();
+  const workload = useOwnerWorkload();
   const touches = useRecentTouches(12);
   const runs = useRuns();
 
@@ -21,14 +32,23 @@ export default function Dashboard() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold">Dashboard</h1>
-        <Link
-          to="/calls"
-          className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
-        >
-          <PhoneCall className="size-4" />
-          Work the call list
-          <ArrowRight className="size-4" />
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/cadence"
+            className="muted inline-flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 text-sm font-medium hover:bg-[var(--surface-2)]"
+          >
+            <ListChecks className="size-4" />
+            Cadence
+          </Link>
+          <Link
+            to="/calls"
+            className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+          >
+            <PhoneCall className="size-4" />
+            Work the call list
+            <ArrowRight className="size-4" />
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -37,7 +57,7 @@ export default function Dashboard() {
         <Stat
           label="Touches this week"
           value={s.touchesThisWeek}
-          hint={s.touchesThisWeek === 0 ? "nothing logged yet" : "logged by you and Avery"}
+          hint={s.touchesThisWeek === 0 ? "nothing logged yet" : "logged by the team"}
           tone={s.touchesThisWeek === 0 ? "warn" : "brand"}
         />
         <Stat
@@ -50,11 +70,22 @@ export default function Dashboard() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader
-            title="The split"
-            subtitle="Assigned by brokerage, stable across every pipeline run"
+            title="Who has what"
+            subtitle="Split by brokerage to begin with, then whatever anyone has taken since"
           />
           <div className="space-y-3 p-4">
-            <SplitBar andrew={s.splitAndrew} avery={s.splitAvery} />
+            {workload.isLoading ? (
+              <Spinner />
+            ) : isMissingSchema(workload.error) ? (
+              <p className="muted text-sm">
+                Waiting on migration <code>0010_anyone_can_own</code> — run it and
+                this fills in.
+              </p>
+            ) : workload.error ? (
+              <ErrorState error={workload.error} />
+            ) : (
+              <Workload rows={workload.data ?? []} me={owner} unassigned={s.unassignedCount} />
+            )}
             {s.leadsFlagged > 0 && (
               <p className="text-sm">
                 <Badge tone="warn">{s.leadsFlagged} leads</Badge>{" "}
@@ -91,7 +122,7 @@ export default function Dashboard() {
       </div>
 
       <Card>
-        <CardHeader title="Recent outreach" subtitle="Everything you and Avery have logged" />
+        <CardHeader title="Recent outreach" subtitle="Everything the team has logged" />
         {touches.isLoading ? (
           <Spinner />
         ) : !touches.data?.length ? (
@@ -131,32 +162,75 @@ function Row({ label, value }: { label: string; value: number | null }) {
   );
 }
 
-function SplitBar({ andrew, avery }: { andrew: number; avery: number }) {
-  const total = Math.max(1, andrew + avery);
+/** A bar each, rather than one bar in two segments.
+ *
+ *  The old version took two numbers and drew two colours, which was honest
+ *  while the split was Andrew and Avery and became a lie the moment it was not.
+ *  This takes however many people there are — including whoever has nothing
+ *  yet, because a row reading 0 is the one that asks to be acted on. */
+function Workload({
+  rows,
+  me,
+  unassigned,
+}: {
+  rows: OwnerWorkload[];
+  me: string | null;
+  unassigned: number;
+}) {
+  if (rows.length === 0) {
+    return (
+      <p className="muted text-sm">
+        Nobody in <Link to="/settings" className="text-brand-600 hover:underline">Settings → People</Link> yet.
+      </p>
+    );
+  }
+
+  // Scaled against the largest holding, not the total: with five people the
+  // share-of-total bars all collapse to slivers and stop being readable.
+  const most = Math.max(1, ...rows.map((r) => r.agent_count));
+
   return (
-    <div>
-      <div className="flex h-3 overflow-hidden rounded-full bg-[var(--surface-2)]">
-        <div
-          className="bg-brand-600"
-          style={{ width: `${(andrew / total) * 100}%` }}
-          aria-label={`Andrew ${andrew}`}
-        />
-        <div
-          className="bg-sky-500"
-          style={{ width: `${(avery / total) * 100}%` }}
-          aria-label={`Avery ${avery}`}
-        />
-      </div>
-      <div className="mt-2 flex justify-between text-sm">
-        <span className="flex items-center gap-1.5">
-          <span className="size-2.5 rounded-full bg-brand-600" />
-          Andrew <span className="nums muted">{andrew}</span>
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="size-2.5 rounded-full bg-sky-500" />
-          Avery <span className="nums muted">{avery}</span>
-        </span>
-      </div>
+    <div className="space-y-2">
+      {rows.map((r) => {
+        const mine = r.owner_name === me;
+        return (
+          <Link
+            key={r.owner_name}
+            to={`/agents?owner=${encodeURIComponent(r.owner_name)}`}
+            className="block rounded-lg px-1 py-1 hover:bg-[var(--surface-2)]"
+          >
+            <div className="flex items-baseline justify-between gap-2 text-sm">
+              <span className={mine ? "font-semibold" : ""}>
+                {r.owner_name}
+                {mine && <span className="muted text-xs"> · you</span>}
+              </span>
+              <span className="nums muted text-xs">
+                {r.agent_count} agents
+                {r.due_count > 0 && ` · ${r.due_count} due`}
+              </span>
+            </div>
+            <div className="mt-1 h-2 overflow-hidden rounded-full bg-[var(--surface-2)]">
+              <div
+                className={mine ? "h-full bg-brand-600" : "h-full bg-sky-500"}
+                style={{ width: `${(r.agent_count / most) * 100}%` }}
+              />
+            </div>
+          </Link>
+        );
+      })}
+
+      {unassigned > 0 && (
+        <Link
+          to={`/agents?owner=${encodeURIComponent(UNASSIGNED)}`}
+          className="flex items-center gap-2 rounded-lg px-1 py-1.5 text-sm hover:bg-[var(--surface-2)]"
+        >
+          <Badge tone="warn">{unassigned}</Badge>
+          <span className="muted">
+            active {unassigned === 1 ? "agent has" : "agents have"} no owner
+          </span>
+          <ArrowRight className="muted ml-auto size-4" />
+        </Link>
+      )}
     </div>
   );
 }

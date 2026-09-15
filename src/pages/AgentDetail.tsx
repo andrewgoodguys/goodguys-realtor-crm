@@ -23,6 +23,7 @@ import {
   fmtDate,
   fmtMoney,
   fmtPhone,
+  fmtRelative,
   isPlaceholder,
   smartMovingLink,
 } from "@/lib/format";
@@ -221,30 +222,44 @@ export default function AgentDetail() {
                 </datalist>
               </label>
 
-              <label className="block space-y-1.5">
-                <span className="text-sm font-medium">Assigned to</span>
-                <Select
-                  value={agent.owner_name ?? ""}
-                  onChange={(e) =>
-                    update.mutate({
-                      id: agent.id,
-                      patch: { owner_name: e.target.value || null },
-                    })
-                  }
-                >
-                  <option value="">Unassigned</option>
-                  {(peopleQ.data?.map((p) => p.name) ?? OWNERS).map((o) => (
-                    <option key={o} value={o}>
-                      {o}
-                    </option>
-                  ))}
-                  {/* Whoever owns this today may since have been deactivated. */}
-                  {agent.owner_name &&
-                    !(peopleQ.data ?? []).some((p) => p.name === agent.owner_name) && (
-                      <option value={agent.owner_name}>{agent.owner_name} (inactive)</option>
-                    )}
-                </Select>
-              </label>
+              <div className="space-y-1.5">
+                <label className="block space-y-1.5">
+                  <span className="text-sm font-medium">Assigned to</span>
+                  <Select
+                    value={agent.owner_name ?? ""}
+                    onChange={(e) =>
+                      update.mutate({
+                        id: agent.id,
+                        patch: { owner_name: e.target.value || null },
+                      })
+                    }
+                  >
+                    <option value="">Unassigned</option>
+                    {(peopleQ.data?.map((p) => p.name) ?? OWNERS).map((o) => (
+                      <option key={o} value={o}>
+                        {o}
+                      </option>
+                    ))}
+                    {/* Whoever owns this today may since have been deactivated. */}
+                    {agent.owner_name &&
+                      !(peopleQ.data ?? []).some((p) => p.name === agent.owner_name) && (
+                        <option value={agent.owner_name}>{agent.owner_name} (inactive)</option>
+                      )}
+                  </Select>
+                </label>
+                {/* Nothing is shown for the original import: owner_assigned_at
+                    is null there, and "assigned by nobody, at no time" reads
+                    worse than saying where it came from. */}
+                <p className="muted text-xs">
+                  {agent.owner_assigned_at
+                    ? `Taken ${fmtRelative(agent.owner_assigned_at)}${
+                        agent.owner_assigned_by
+                          ? ` by ${agent.owner_assigned_by.split("@")[0]}`
+                          : ""
+                      }`
+                    : "From the original split by brokerage"}
+                </p>
+              </div>
 
               <label className="block space-y-1.5">
                 <span className="text-sm font-medium">Relationship status</span>

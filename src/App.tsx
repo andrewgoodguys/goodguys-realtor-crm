@@ -4,6 +4,7 @@ import {
   BarChart3,
   Building,
   Building2,
+  ListChecks,
   LogOut,
   MapPinned,
   PhoneCall,
@@ -25,16 +26,25 @@ import BrokerageDetail from "@/pages/BrokerageDetail";
 import Leads from "@/pages/Leads";
 import RunLog from "@/pages/RunLog";
 import Settings from "@/pages/Settings";
+import Cadence from "@/pages/Cadence";
 
+/** `mobile: false` keeps a page out of the phone bar without hiding it. The bar
+ *  is for things you do standing in a driveway, and it is already seven columns
+ *  wide; Cadence is something you read, so it stays in the header and is linked
+ *  from the dashboard and the call list. An eighth column would not have fit —
+ *  the grid is fixed, so an extra item silently wraps onto a second row. */
 const NAV = [
-  { to: "/", label: "Dashboard", icon: BarChart3, end: true },
-  { to: "/calls", label: "Call list", icon: PhoneCall, end: false },
-  { to: "/agents", label: "Agents", icon: Building2, end: false },
-  { to: "/brokerages", label: "Brokerages", short: "Firms", icon: Building, end: false },
-  { to: "/leads", label: "Leads", icon: MapPinned, end: false },
-  { to: "/runs", label: "Run log", icon: ScrollText, end: false },
-  { to: "/settings", label: "Settings", icon: SlidersHorizontal, end: false },
+  { to: "/", label: "Dashboard", icon: BarChart3, end: true, mobile: true },
+  { to: "/calls", label: "Call list", icon: PhoneCall, end: false, mobile: true },
+  { to: "/agents", label: "Agents", icon: Building2, end: false, mobile: true },
+  { to: "/brokerages", label: "Brokerages", short: "Firms", icon: Building, end: false, mobile: true },
+  { to: "/leads", label: "Leads", icon: MapPinned, end: false, mobile: true },
+  { to: "/cadence", label: "Cadence", icon: ListChecks, end: false, mobile: false },
+  { to: "/runs", label: "Run log", icon: ScrollText, end: false, mobile: true },
+  { to: "/settings", label: "Settings", icon: SlidersHorizontal, end: false, mobile: true },
 ];
+
+const MOBILE_NAV = NAV.filter((item) => item.mobile);
 
 export default function App() {
   const { session, email, loading, signOut } = useAuth();
@@ -118,6 +128,7 @@ export default function App() {
           <Route path="/brokerages" element={<Brokerages />} />
           <Route path="/brokerages/:brokerage" element={<BrokerageDetail />} />
           <Route path="/leads" element={<Leads />} />
+          <Route path="/cadence" element={<Cadence />} />
           <Route path="/runs" element={<RunLog />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
@@ -126,7 +137,7 @@ export default function App() {
 
       {/* Bottom bar on phones — this app gets used standing in a driveway. */}
       <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-7 border-t border-[var(--border)] bg-[var(--surface)] pb-[env(safe-area-inset-bottom)] md:hidden">
-        {NAV.map(({ to, label, short, icon: Icon, end }) => (
+        {MOBILE_NAV.map(({ to, label, short, icon: Icon, end }) => (
           <NavLink
             key={to}
             to={to}

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Check, Copy, MailPlus, MessageSquare, PhoneCall, PhoneOff } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { useCopy, useDueThisWeek } from "@/hooks/useData";
+import { useCopy, useDueThisWeek, useSettings } from "@/hooks/useData";
 import { dialable, fmtDate, fmtPhone, isPlaceholder, priorityTone } from "@/lib/format";
 import { emailMessage, textMessage } from "@/lib/templates";
 import type { DueThisWeekRow } from "@/lib/types";
@@ -27,6 +27,7 @@ export default function CallList() {
   const [logging, setLogging] = useState<DueThisWeekRow | null>(null);
 
   const { data, isLoading, error } = useDueThisWeek(scope === "mine" ? owner : null);
+  const coolOff = useSettings().data?.follow_up_days ?? 30;
 
   const rows = useMemo(() => {
     if (!data) return [];
@@ -42,7 +43,10 @@ export default function CallList() {
         <div>
           <h1 className="text-xl font-semibold">Call list</h1>
           <p className="muted text-sm">
-            {data?.length ?? 0} due · highest priority first
+            {data?.length ?? 0} due · highest priority first ·{" "}
+            <Link to="/cadence" className="text-brand-600 hover:underline">
+              the cadence
+            </Link>
           </p>
         </div>
 
@@ -71,8 +75,8 @@ export default function CallList() {
             title="Nobody is due"
             description={
               scope === "mine"
-                ? "Your half of the split is clear. Try Everyone to see Avery's."
-                : "Every agent has been touched inside the 30-day cool-off."
+                ? "Your list is clear. Try Everyone to see what the rest of the team has."
+                : `Every agent has been touched inside the ${coolOff}-day cool-off.`
             }
           />
         </Card>

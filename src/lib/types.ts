@@ -16,6 +16,10 @@ export interface Agent {
   phone_type: PhoneType;
   email: string | null;
   owner_name: Owner | null;
+  /** When owner_name last changed, and who changed it. Both null for the
+   *  original md5-by-brokerage split, which nobody chose. */
+  owner_assigned_at: string | null;
+  owner_assigned_by: string | null;
   lifetime_jobs: number;
   lifetime_revenue: number;
   most_recent_job: string | null;
@@ -152,9 +156,34 @@ export const RELATIONSHIP_STATUSES = [
 
 export interface Person {
   name: string;
+  /** The login they sign in with, once they have. Null until then — a name
+   *  can be assignable before its owner has ever opened the app. */
+  email: string | null;
   active: boolean;
   sort_order: number;
   created_at: string;
+}
+
+/** A step of the intro sequence — one row of public.outreach_steps.
+ *  `body` is null by design: the wording lives in public.settings, once. */
+export interface OutreachStep {
+  step_number: number;
+  /** Days *after* the first touch, so the workbook's "day 1" is 0. */
+  day_offset: number;
+  channel: Channel | null;
+  label: string;
+  body: string | null;
+  active: boolean;
+}
+
+/** A row of public.owner_workload — one person and what they are carrying. */
+export interface OwnerWorkload {
+  owner_name: string;
+  email: string | null;
+  active: boolean;
+  sort_order: number;
+  agent_count: number;
+  due_count: number;
 }
 
 /** The single row of public.settings. */

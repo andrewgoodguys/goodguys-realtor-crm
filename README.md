@@ -17,6 +17,7 @@ RLS). Deployed to GitHub Pages by Actions on every push to `main`.
 | **Brokerages** | Every firm, biggest first — click through to its agents, then narrow to one office |
 | **Agent detail** | Their moves (each linked back to SmartMoving and Redfin), the call script / text / email for *that* agent, full outreach history |
 | **Leads** | Every address the pipeline processed, including the recheck and manual-review buckets |
+| **Cadence** | The outreach rules, with the sequence read live out of the database |
 | **Run log** | Every weekly pipeline run |
 
 ## How it relates to `goodguys-pipeline`
@@ -51,7 +52,20 @@ out (`REPEAT_TOUCH_COOLOFF_DAYS`), which is what drives the call list.
 
 Supabase project **`goodguys-realtor-crm`** (`qqkrfvrbbkcwigbjtqpp`).
 
-Paste `supabase/migrations/0001_init.sql` into the SQL Editor and run it.
+Paste `supabase/migrations/0001_init.sql` into the SQL Editor and run it, then
+each later migration in order.
+
+> **Migrations are applied by pasting, and the remote has no migration history
+> recorded** — `supabase migration list` shows the local files against an empty
+> Remote column. A plain `supabase db push` would try to re-run `0001` against
+> live data. If you ever switch to the CLI, repair first:
+> `supabase migration repair --status applied 0001 0002 …`, then `db push`.
+>
+> The app is deployed by Actions on a push to `main` and the SQL is run by
+> hand, so **run the migration first**. Anything reading a table that isn't
+> there yet says "waiting on migration …" and leaves the rest of the page
+> working (`isMissingSchema` in `src/lib/supabase.ts`), but there's no reason
+> to make anyone look at that.
 
 Then **Authentication → Providers → Email**: turn on email, and turn *off*
 "Confirm email" if you want the 6-digit code flow without a second click.
@@ -158,15 +172,67 @@ it's enforced in the database, not in the UI. The check in
 `src/lib/supabase.ts` only exists to give a clear error instead of an
 inexplicably empty app.
 
-Andrew and Avery are auto-mapped to their half of the split on first sign-in
-(by email local-part). Anyone else gets full access with no default filter.
+### Everyone gets a name
+
+Signing in was never the restriction — reading and writing has always been open
+to the whole domain. What a third employee didn't get was an *identity*: the
+owner was worked out from the email local-part, matching `andrew` or `avery`
+and returning null for anybody else. A null owner means no call list of your
+own, and no row in `public.people` means nobody can assign you an agent even
+by hand.
+
+Since `0010`, signing in creates and links that row (`ensure_my_person()`), so
+a new hire has a name, a call list and a place in the picker the first time
+they open the app. `public.people.email` is the link.
+
+- A name seeded or typed into **Settings → People** ahead of time is *claimed*
+  by that login rather than duplicated, matching on the full name first and
+  then on the first name alone when it's unambiguous — so `jack@` finds
+  "Jack Sawyer" instead of opening a second "Jack" beside it.
+- That first-name match is a guess, and Settings → People prints the email
+  under each name so a wrong one is visible. Rename to fix it; renaming
+  cascades and carries that person's agents along.
+- The roster seeded by `0010` is Jack Sawyer, Trent Barron and Sy Lovingood,
+  alongside Andrew and Avery.
+
+**The weekly run still only knows two names.** `pipeline/owners.py` splits new
+agents by md5-of-brokerage across `OWNERS` in `pipeline/config.py`. People added
+in the app are assignable immediately but don't enter that automatic split until
+that list is updated too.
+
+### My agents
+
+`owner_name` is who works an agent; it is a filter, not a boundary, and
+everyone can still see and edit everything.
+
+- **Agents → My agents**, or the owner filter, which also has **Unassigned**.
+  The filter lives in the URL, so `/agents?owner=Trent%20Barron` is a link you
+  can send someone.
+- Tick rows and **Assign to me**, assign to somebody else, or unassign — one
+  statement for the batch.
+- The dashboard draws a bar per person, and flags active agents nobody owns.
+  That number used to be structurally zero; now that agents can be handed back
+  it's the one that says work is falling through.
+- `agents.owner_assigned_at` / `owner_assigned_by` record who took an agent and
+  when, stamped by a trigger so a change made from a script or the SQL editor
+  leaves the same trail as one made by clicking. Both are null for the original
+  import, which the agent page reports as "from the original split by
+  brokerage" rather than inventing a person.
 
 ## The outreach cadence
+
+**Read it in the app: `/cadence`.** That page is the one people actually
+following the cadence can reach, and it renders the sequence from
+`public.outreach_steps` and the gaps from `public.settings`, so it can't
+quietly disagree with what the database is doing. Each rule is marked
+**Automatic** — the database or the call list holds you to it — or **On you**,
+meaning nothing does. Rules 2 and 6 are the two that are on you.
 
 The rules below were footnotes at the bottom of the workbook's Outreach
 Tracker sheet, typed into the `Agent Name` column — which is how eight of them
 ended up in `public.agents` as if they were realtors. `0006` moves them out.
-This is now the place they are written down.
+This is the reference copy; `src/lib/cadence.ts` is the one the app renders,
+and `src/lib/cadence.test.ts` pins the day-1/4/7 re-indexing.
 
 > 1. **Intro sequence per agent, ONCE ever:** Text (day 1) → Call (day 4) →
 >    Email (day 7).
