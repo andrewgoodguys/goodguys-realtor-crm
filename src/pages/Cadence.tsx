@@ -3,6 +3,7 @@ import { CircleCheck, Hand, Mail, MessageSquare, PhoneCall, StickyNote, Users } 
 import { useOutreachSteps, useSettings } from "@/hooks/useData";
 import {
   CADENCE_RULES,
+  NO_RESPONSE_PAUSE_DAYS,
   channelVerb,
   describeSequence,
   stepDay,
@@ -31,6 +32,8 @@ export default function Cadence() {
   const numbers: CadenceNumbers = {
     followUpDays: settingsQ.data?.follow_up_days ?? 30,
     dueWindowDays: settingsQ.data?.due_window_days ?? 7,
+    noResponsePauseDays:
+      settingsQ.data?.no_response_pause_days ?? NO_RESPONSE_PAUSE_DAYS,
   };
 
   return (
@@ -125,6 +128,11 @@ export default function Cadence() {
             label="Call-list look-ahead"
             value={`${numbers.dueWindowDays} ${numbers.dueWindowDays === 1 ? "day" : "days"}`}
             hint="How far past today the list reaches"
+          />
+          <Number
+            label="Rest after no response"
+            value={`${numbers.noResponsePauseDays} days`}
+            hint="Rule 2, once a whole sequence goes unanswered"
           />
         </dl>
       </Card>

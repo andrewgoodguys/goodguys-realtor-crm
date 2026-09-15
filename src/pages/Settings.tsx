@@ -208,10 +208,13 @@ function Cadence({ settings }: { settings: SettingsRow }) {
   const { draft, set, dirty, saved, reset } = useDraft(settings, [
     "follow_up_days",
     "due_window_days",
+    "no_response_pause_days",
     "default_owner",
   ]);
 
-  const cadenceChanged = draft.follow_up_days !== saved.follow_up_days;
+  const cadenceChanged =
+    draft.follow_up_days !== saved.follow_up_days ||
+    draft.no_response_pause_days !== saved.no_response_pause_days;
 
   return (
     <Card>
@@ -254,7 +257,27 @@ function Cadence({ settings }: { settings: SettingsRow }) {
           </div>
         </Field>
 
-        <Field label="Default owner for new agents" hint="Leave unassigned to keep the brokerage split.">
+        <Field
+          label="Rest after no response"
+          hint="Rule 2. Applied automatically once a whole intro sequence goes unanswered; they come back out of it the moment they reply."
+        >
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min={1}
+              max={3650}
+              className="w-28"
+              value={draft.no_response_pause_days}
+              onChange={(e) => set("no_response_pause_days", Number(e.target.value))}
+            />
+            <span className="muted text-sm">days</span>
+          </div>
+        </Field>
+
+        <Field
+          label="Default owner for new agents"
+          hint="Leave unassigned and a new agent goes to whoever already works that brokerage, or to whoever is carrying the least."
+        >
           <Select
             value={draft.default_owner ?? ""}
             onChange={(e) => set("default_owner", e.target.value || null)}
@@ -270,8 +293,8 @@ function Cadence({ settings }: { settings: SettingsRow }) {
 
         {cadenceChanged && (
           <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200">
-            Saving will reschedule every open follow-up to {draft.follow_up_days} days
-            after its last touch — not just the ones logged from now on.
+            Saving reschedules every agent, not just the ones touched from now on
+            — including re-deriving which intro step each one is on.
           </p>
         )}
       </div>

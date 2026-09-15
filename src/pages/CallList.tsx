@@ -2,10 +2,11 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Check, Copy, MailPlus, MessageSquare, PhoneCall, PhoneOff } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { useCopy, useDueThisWeek, useSettings } from "@/hooks/useData";
+import { useCopy, useDueThisWeek, useOutreachSteps, useSettings } from "@/hooks/useData";
 import { dialable, fmtDate, fmtPhone, isPlaceholder, priorityTone } from "@/lib/format";
 import { emailMessage, textMessage } from "@/lib/templates";
-import type { DueThisWeekRow } from "@/lib/types";
+import { channelVerb, stepDay } from "@/lib/cadence";
+import type { DueThisWeekRow, OutreachStep } from "@/lib/types";
 import LogTouchDialog from "@/components/LogTouchDialog";
 import {
   Badge,
@@ -28,6 +29,15 @@ export default function CallList() {
 
   const { data, isLoading, error } = useDueThisWeek(scope === "mine" ? owner : null);
   const coolOff = useSettings().data?.follow_up_days ?? 30;
+  const steps = useOutreachSteps().data ?? [];
+
+  // agents.next_step_number is maintained by recompute_touch_schedule(); the
+  // step's channel and label are looked up here rather than denormalised onto
+  // the agent, so editing a step changes the call list with it.
+  const stepFor = (agent: DueThisWeekRow): OutreachStep | undefined =>
+    agent.next_step_number == null
+      ? undefined
+      : steps.find((s) => s.step_number === agent.next_step_number);
 
   const rows = useMemo(() => {
     if (!data) return [];
@@ -83,7 +93,12 @@ export default function CallList() {
       ) : (
         <div className="space-y-3">
           {rows.map((agent) => (
-            <CallCard key={agent.id} agent={agent} onLog={() => setLogging(agent)} />
+            <CallCard
+              key={agent.id}
+              agent={agent}
+              step={stepFor(agent)}
+              onLog={() => setLogging(agent)}
+            />
           ))}
         </div>
       )}
@@ -103,11 +118,24 @@ export default function CallList() {
   );
 }
 
-function CallCard({ agent, onLog }: { agent: DueThisWeekRow; onLog: () => void }) {
+function CallCard({
+  agent,
+  step,
+  onLog,
+}: {
+  agent: DueThisWeekRow;
+  step?: OutreachStep;
+  onLog: () => void;
+}) {
   const [copied, setCopied] = useState<string | null>(null);
   const copyText = useCopy();
   const phone = dialable(agent.phone);
   const tone = priorityTone(agent.priority);
+
+  // Rule 4 is one channel per touch, so exactly one button is the primary one.
+  // With no step — sequence finished, or a partner who is off it — that's the
+  // call, which is what this list did for everybody before.
+  const owed = step?.channel ?? "call";
 
   const message = useMemo(
     () =>
@@ -150,6 +178,13 @@ function CallCard({ agent, onLog }: { agent: DueThisWeekRow; onLog: () => void }
             {agent.name}
           </Link>
           <p className="muted truncate text-sm">{agent.brokerage ?? "Brokerage unknown"}</p>
+          {step && (
+            <p className="mt-1">
+              <Badge tone="brand">
+                Step {step.step_number} · {channelVerb(step.channel)} — day {stepDay(step)}
+              </Badge>
+            </p>
+          )}
         </div>
         <Badge tone={tone === "high" ? "brand" : tone === "medium" ? "info" : "neutral"}>
           {Math.round(agent.priority)}
@@ -177,11 +212,16 @@ function CallCard({ agent, onLog }: { agent: DueThisWeekRow; onLog: () => void }
       <div className="mt-3 flex flex-wrap gap-2">
         {phone ? (
           <>
-            <Button variant="primary" size="sm" onClick={() => (window.location.href = `tel:${phone}`)}>
+            <Button
+              variant={owed === "call" ? "primary" : "secondary"}
+              size="sm"
+              onClick={() => (window.location.href = `tel:${phone}`)}
+            >
               <PhoneCall className="size-4" />
               {fmtPhone(agent.phone)}
             </Button>
             <Button
+              variant={owed === "text" ? "primary" : "secondary"}
               size="sm"
               onClick={() =>
                 (window.location.href = `sms:${phone}?&body=${encodeURIComponent(message)}`)
@@ -205,6 +245,7 @@ function CallCard({ agent, onLog }: { agent: DueThisWeekRow; onLog: () => void }
 
         {!isPlaceholder(agent.email) && agent.email && (
           <Button
+            variant={owed === "email" ? "primary" : "secondary"}
             size="sm"
             onClick={() =>
               (window.location.href = `mailto:${agent.email}?subject=${encodeURIComponent(

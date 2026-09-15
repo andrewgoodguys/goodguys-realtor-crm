@@ -297,8 +297,12 @@ export function useUpdateSettings() {
       ) as Settings;
 
       // A new cadence should move every open follow-up, not just the next one
-      // logged against an agent.
-      if (patch.follow_up_days !== undefined) {
+      // logged against an agent. Since 0011 this also re-derives which intro
+      // step everyone is on, so rule 2's pause has to trigger it too.
+      if (
+        patch.follow_up_days !== undefined ||
+        patch.no_response_pause_days !== undefined
+      ) {
         const { error } = await supabase.rpc("reschedule_follow_ups");
         if (error) throw error;
       }
@@ -306,7 +310,11 @@ export function useUpdateSettings() {
     },
     onSuccess: (_next, patch) => {
       qc.invalidateQueries({ queryKey: ["settings"] });
-      if (patch.follow_up_days !== undefined || patch.due_window_days !== undefined) {
+      if (
+        patch.follow_up_days !== undefined ||
+        patch.due_window_days !== undefined ||
+        patch.no_response_pause_days !== undefined
+      ) {
         invalidateAgentViews(qc);
       }
     },
@@ -340,6 +348,20 @@ export function useOwnerWorkload() {
           .eq("active", true)
           .order("sort_order"),
       ) as OwnerWorkload[],
+  });
+}
+
+/** Deal the ownerless agents out, brokerage-first, by the same rule that
+ *  assigns a newly imported one. Returns how many moved. */
+export function useDistributeUnassigned() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.rpc("distribute_unassigned");
+      if (error) throw error;
+      return (data as number) ?? 0;
+    },
+    onSuccess: () => invalidateAgentViews(qc),
   });
 }
 

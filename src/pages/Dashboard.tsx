@@ -4,14 +4,25 @@ import { useAuth } from "@/hooks/useAuth";
 import {
   UNASSIGNED,
   useDashboardStats,
+  useDistributeUnassigned,
   useOwnerWorkload,
+  usePeople,
   useRecentTouches,
   useRuns,
 } from "@/hooks/useData";
 import { fmtDate, fmtRelative } from "@/lib/format";
 import { isMissingSchema } from "@/lib/supabase";
 import type { OwnerWorkload } from "@/lib/types";
-import { Badge, Card, CardHeader, EmptyState, ErrorState, Spinner, Stat } from "@/components/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  CardHeader,
+  EmptyState,
+  ErrorState,
+  Spinner,
+  Stat,
+} from "@/components/ui";
 
 export default function Dashboard() {
   const { owner } = useAuth();
@@ -19,6 +30,17 @@ export default function Dashboard() {
   const workload = useOwnerWorkload();
   const touches = useRecentTouches(12);
   const runs = useRuns();
+  const people = usePeople(true).data ?? [];
+  const distribute = useDistributeUnassigned();
+
+  // Touches record the email that logged them. Now that people carry their
+  // login, show the name instead — "sy" and "Sy Lovingood" are the same
+  // person, and only one of them is how anyone refers to him.
+  const nameFor = (email: string | null) => {
+    if (!email) return "—";
+    const person = people.find((p) => p.email === email.toLowerCase());
+    return person?.name ?? email.split("@")[0];
+  };
 
   if (stats.isLoading) return <Spinner label="Loading dashboard…" />;
   if (stats.error) return <ErrorState error={stats.error} />;
@@ -84,8 +106,15 @@ export default function Dashboard() {
             ) : workload.error ? (
               <ErrorState error={workload.error} />
             ) : (
-              <Workload rows={workload.data ?? []} me={owner} unassigned={s.unassignedCount} />
+              <Workload
+                rows={workload.data ?? []}
+                me={owner}
+                unassigned={s.unassignedCount}
+                onDistribute={() => distribute.mutate()}
+                distributing={distribute.isPending}
+              />
             )}
+            {distribute.error && <ErrorState error={distribute.error} />}
             {s.leadsFlagged > 0 && (
               <p className="text-sm">
                 <Badge tone="warn">{s.leadsFlagged} leads</Badge>{" "}
@@ -142,7 +171,7 @@ export default function Dashboard() {
                   {t.outcome ?? t.notes ?? "Logged"}
                 </Link>
                 <span className="muted ml-auto whitespace-nowrap text-xs">
-                  {t.created_by_email?.split("@")[0]} · {fmtRelative(t.occurred_at)}
+                  {nameFor(t.created_by_email)} · {fmtRelative(t.occurred_at)}
                 </span>
               </li>
             ))}
@@ -172,10 +201,14 @@ function Workload({
   rows,
   me,
   unassigned,
+  onDistribute,
+  distributing,
 }: {
   rows: OwnerWorkload[];
   me: string | null;
   unassigned: number;
+  onDistribute: () => void;
+  distributing: boolean;
 }) {
   if (rows.length === 0) {
     return (
@@ -220,16 +253,21 @@ function Workload({
       })}
 
       {unassigned > 0 && (
-        <Link
-          to={`/agents?owner=${encodeURIComponent(UNASSIGNED)}`}
-          className="flex items-center gap-2 rounded-lg px-1 py-1.5 text-sm hover:bg-[var(--surface-2)]"
-        >
-          <Badge tone="warn">{unassigned}</Badge>
-          <span className="muted">
-            active {unassigned === 1 ? "agent has" : "agents have"} no owner
-          </span>
-          <ArrowRight className="muted ml-auto size-4" />
-        </Link>
+        <div className="flex flex-wrap items-center gap-2 border-t border-[var(--border)] pt-2 text-sm">
+          <Link
+            to={`/agents?owner=${encodeURIComponent(UNASSIGNED)}`}
+            className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-1.5 hover:bg-[var(--surface-2)]"
+          >
+            <Badge tone="warn">{unassigned}</Badge>
+            <span className="muted truncate">
+              active {unassigned === 1 ? "agent has" : "agents have"} no owner
+            </span>
+            <ArrowRight className="muted ml-auto size-4 shrink-0" />
+          </Link>
+          <Button size="sm" loading={distributing} onClick={onDistribute}>
+            Deal them out
+          </Button>
+        </div>
       )}
     </div>
   );

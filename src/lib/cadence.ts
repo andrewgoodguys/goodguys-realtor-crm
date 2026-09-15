@@ -11,17 +11,23 @@
  *  wording is the workbook's; the numbers are not baked in — they are read from
  *  `public.settings` and `public.outreach_steps` at render time, so a rule
  *  cannot quietly disagree with the cadence the database is running.
+ *
+ *  `enforcement` is the honest part. Five of these are applied by the database
+ *  as of 0011 — `recompute_touch_schedule()` walks the sequence and applies
+ *  rule 2's pause. Rule 6 is not, and says so: nothing stops you sending a
+ *  partner a template, it just isn't scheduled. Marking a rule automatic when
+ *  it is not is worse than leaving it out, because it tells you the system has
+ *  your back on something you are personally carrying.
  */
 import type { OutreachStep } from "./types";
 
 /** config.py CONTACT_THIS_WEEK_N — the top slice worth working this week. */
 export const CONTACT_THIS_WEEK_N = 20;
 
-/** Rule 2's pause after a sequence goes unanswered. Unlike follow_up_days this
- *  is not in `public.settings` and nothing enforces it — `sync_agent_touch()`
- *  schedules every agent the same way regardless of how the last sequence
- *  ended. Stated here as the number to hold yourself to, and flagged on the
- *  page as manual, rather than implied to be automatic. */
+/** Rule 2's pause, as a fallback only. It lives in
+ *  `settings.no_response_pause_days` since 0011 and is applied by
+ *  `recompute_touch_schedule()`; this is what to show while that query is in
+ *  flight, so the page never renders the rule with a blank in it. */
 export const NO_RESPONSE_PAUSE_DAYS = 90;
 
 export interface CadenceNumbers {
@@ -29,6 +35,8 @@ export interface CadenceNumbers {
   followUpDays: number;
   /** settings.due_window_days — how far ahead the call list looks. */
   dueWindowDays: number;
+  /** settings.no_response_pause_days — rule 2's rest. */
+  noResponsePauseDays: number;
 }
 
 export type Enforcement =
@@ -46,26 +54,23 @@ export const CADENCE_RULES: CadenceRule[] = [
   {
     n: 1,
     title: "Intro sequence, once ever",
-    body: (v) =>
+    body: () =>
       "Every new agent gets one introduction: a text, then a call, then an " +
       "email, on the schedule below. Once per agent, for as long as they are " +
-      "an agent — not once per move. Track it yourself for now: the call list " +
-      `schedules every agent the same ${v.followUpDays} days out and does not ` +
-      "yet know which step of the sequence anyone is on.",
-    // The steps are data, but nothing reads them to decide when an agent is
-    // next due — sync_agent_touch() applies follow_up_days to everybody alike.
-    // Calling this automatic would be the worst kind of wrong: it would say
-    // the system is walking you through a sequence you are actually carrying.
-    enforcement: { kind: "manual", where: "public.outreach_steps" },
+      "an agent — not once per move. The call list names the step that's owed " +
+      "and dates it from the first touch, so a late call doesn't push the " +
+      "email out behind it.",
+    enforcement: { kind: "automatic", where: "recompute_touch_schedule()" },
   },
   {
     n: 2,
     title: "No response ends the sequence",
-    body: () =>
-      `If the full sequence goes unanswered, set the agent to "Attempted — no ` +
-      `response" and leave them alone for ${NO_RESPONSE_PAUSE_DAYS} days ` +
-      `before any new touch.`,
-    enforcement: { kind: "manual", where: "nothing schedules this pause" },
+    body: (v) =>
+      `When the full sequence goes out and nothing comes back, the agent is ` +
+      `set to "Attempted — no response" and rests ${v.noResponsePauseDays} ` +
+      `days. If they answer later they come straight back out of it — the ` +
+      `pause is a pause, not a verdict.`,
+    enforcement: { kind: "automatic", where: "settings.no_response_pause_days" },
   },
   {
     n: 3,
@@ -98,6 +103,8 @@ export const CADENCE_RULES: CadenceRule[] = [
     body: () =>
       "Agents in conversation, and referral partners, are relationship-driven. " +
       "Write to them as yourself — the templates are for introductions.",
+    // The statuses in_intro_sequence() excludes. Nothing stops you sending a
+    // partner a template by hand — but nothing schedules one either.
     enforcement: { kind: "manual", where: "agents.relationship_status" },
   },
   {

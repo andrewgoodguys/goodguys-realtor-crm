@@ -28,6 +28,10 @@ export interface Agent {
   do_not_contact: boolean;
   last_touch: string | null;
   next_touch_due: string | null;
+  /** The outreach_steps row this agent owes next, maintained by
+   *  recompute_touch_schedule(). Null once the intro sequence is done, or
+   *  when it doesn't apply — a partner, or someone resting under rule 2. */
+  next_step_number: number | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -201,6 +205,8 @@ export interface Settings {
 
   follow_up_days: number;
   due_window_days: number;
+  /** Rule 2's pause after a full sequence went unanswered. */
+  no_response_pause_days: number;
   default_owner: string | null;
 
   signature: string;

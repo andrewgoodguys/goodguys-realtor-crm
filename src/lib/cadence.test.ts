@@ -18,7 +18,11 @@ const SEEDED: OutreachStep[] = [
   { step_number: 3, day_offset: 6, channel: "email", label: "Intro email — day 7", body: null, active: true },
 ];
 
-const NUMBERS: CadenceNumbers = { followUpDays: 30, dueWindowDays: 7 };
+const NUMBERS: CadenceNumbers = {
+  followUpDays: 30,
+  dueWindowDays: 7,
+  noResponsePauseDays: 90,
+};
 
 describe("stepDay", () => {
   // Shift this by one and the whole sequence moves a day, silently: no test
@@ -60,7 +64,11 @@ describe("CADENCE_RULES", () => {
   // The point of rendering the rules from settings is that they cannot drift
   // from the cadence actually running. A hardcoded 30 here would defeat it.
   it("takes its numbers from settings, not from the prose", () => {
-    const changed: CadenceNumbers = { followUpDays: 45, dueWindowDays: 1 };
+    const changed: CadenceNumbers = {
+      followUpDays: 45,
+      dueWindowDays: 1,
+      noResponsePauseDays: 120,
+    };
     const rule3 = CADENCE_RULES[2].body(changed);
     expect(rule3).toContain("45 days");
     expect(rule3).not.toContain("30 days");
@@ -75,13 +83,22 @@ describe("CADENCE_RULES", () => {
     expect(CADENCE_RULES[6].body(NUMBERS)).toContain(String(CONTACT_THIS_WEEK_N));
   });
 
-  // Rules 1, 2 and 6 are the ones nothing enforces. Marking a rule automatic
-  // when it is not is worse than not listing it: it says the system has your
-  // back. Rule 1 especially — outreach_steps holds the sequence, but nothing
-  // reads it to schedule anything, so the steps are a reference, not a queue.
-  // When something does drive them, this list loses the 1.
+  // Rule 2's pause moved into settings in 0011. The constant is now only the
+  // value shown while that query is in flight, so the rule has to follow the
+  // setting rather than the constant.
+  it("reads rule 2's pause from settings, not the fallback constant", () => {
+    const changed: CadenceNumbers = { ...NUMBERS, noResponsePauseDays: 120 };
+    expect(CADENCE_RULES[1].body(changed)).toContain("120 days");
+    expect(CADENCE_RULES[1].body(changed)).not.toContain("90 days");
+  });
+
+  // 0011 made rules 1 and 2 real: recompute_touch_schedule() walks the
+  // sequence and applies the pause. Rule 6 is the one left, and it should stay
+  // honest — nothing schedules a partner touch, so nothing may claim to.
+  // Adding an "automatic" here without a function behind it is the failure
+  // this test exists to catch.
   it("does not claim a rule is automatic when nothing enforces it", () => {
     const manual = CADENCE_RULES.filter((r) => r.enforcement.kind === "manual");
-    expect(manual.map((r) => r.n)).toEqual([1, 2, 6]);
+    expect(manual.map((r) => r.n)).toEqual([6]);
   });
 });
