@@ -1,8 +1,8 @@
 # GoodGuys Realtor CRM
 
 The realtor referral pipeline as an actual app. Replaces
-`GoodGuys Realtor Referral Pipeline.xlsx` as the place Andrew and Avery
-work the call list.
+`GoodGuys Realtor Referral Pipeline.xlsx` as the place the team works the
+call list.
 
 **Stack:** Vite + React + TypeScript + Tailwind v4 + Supabase (Postgres, auth,
 RLS). Deployed to GitHub Pages by Actions on every push to `main`.
@@ -11,7 +11,7 @@ RLS). Deployed to GitHub Pages by Actions on every push to `main`.
 
 | Page | What it's for |
 |---|---|
-| **Dashboard** | Who's due, the Andrew/Avery split, response rate, last pipeline run |
+| **Dashboard** | Who's due, who has what, agents nobody owns, response rate, last pipeline run |
 | **Call list** | The work queue — priority order, tap-to-call, tap-to-text with the template prefilled, one-tap logging |
 | **Agents** | All agents, searchable and filterable; status and notes editable |
 | **Brokerages** | Every firm, biggest first — click through to its agents, then narrow to one office |
@@ -30,7 +30,7 @@ workbook.
 The division of labour is unchanged:
 
 > **The agent drives browsers. The scripts own the data. The app is where
-> Andrew and Avery work the results.**
+> the team works the results.**
 
 Scoring, the md5-by-brokerage owner split, dedupe and the message templates
 are ported into `src/lib/templates.ts` and `scripts/import_workbook.py` so
@@ -43,8 +43,9 @@ pins the wording.
 `Email Sent`, `Text Sent`, `Call Made`, `Call Outcome`, `Response`, `Notes`
 were never written by a script, by rule. They're now the `touches` table — an
 append-only log, one row per contact, stamped with who logged it. Logging a
-touch automatically sets `last_touch` and schedules `next_touch_due` 30 days
-out (`REPEAT_TOUCH_COOLOFF_DAYS`), which is what drives the call list.
+touch automatically sets `last_touch` and schedules `next_touch_due`
+`settings.follow_up_days` out (30 by default, once `REPEAT_TOUCH_COOLOFF_DAYS`
+in code), which is what drives the call list.
 
 ## Setup
 
@@ -226,7 +227,10 @@ following the cadence can reach, and it renders the sequence from
 `public.outreach_steps` and the gaps from `public.settings`, so it can't
 quietly disagree with what the database is doing. Each rule is marked
 **Automatic** — the database or the call list holds you to it — or **On you**,
-meaning nothing does. Rules 2 and 6 are the two that are on you.
+meaning nothing does. Rules 1, 2 and 6 are on you: `outreach_steps` records the
+intro sequence but nothing reads it to schedule anything, so `sync_agent_touch()`
+puts every agent the same `follow_up_days` out regardless of which step they are
+on. Driving the sequence off those rows is the next thing worth building.
 
 The rules below were footnotes at the bottom of the workbook's Outreach
 Tracker sheet, typed into the `Agent Name` column — which is how eight of them

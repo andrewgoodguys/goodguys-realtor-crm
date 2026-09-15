@@ -148,6 +148,10 @@ export const OWNERS: Owner[] = ["Andrew", "Avery"];
 export const RELATIONSHIP_STATUSES = [
   "New — not contacted",
   "Contacted",
+  // Where rule 2 sends an agent whose whole intro sequence went unanswered.
+  // The rule has said to set this since the workbook, and until now it was
+  // not one of the options — so it was set by nobody, ever.
+  "Attempted — no response",
   "Engaged",
   "Referral partner",
   "Not interested",

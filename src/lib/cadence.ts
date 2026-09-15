@@ -46,11 +46,17 @@ export const CADENCE_RULES: CadenceRule[] = [
   {
     n: 1,
     title: "Intro sequence, once ever",
-    body: () =>
+    body: (v) =>
       "Every new agent gets one introduction: a text, then a call, then an " +
       "email, on the schedule below. Once per agent, for as long as they are " +
-      "an agent — not once per move.",
-    enforcement: { kind: "automatic", where: "public.outreach_steps" },
+      "an agent — not once per move. Track it yourself for now: the call list " +
+      `schedules every agent the same ${v.followUpDays} days out and does not ` +
+      "yet know which step of the sequence anyone is on.",
+    // The steps are data, but nothing reads them to decide when an agent is
+    // next due — sync_agent_touch() applies follow_up_days to everybody alike.
+    // Calling this automatic would be the worst kind of wrong: it would say
+    // the system is walking you through a sequence you are actually carrying.
+    enforcement: { kind: "manual", where: "public.outreach_steps" },
   },
   {
     n: 2,

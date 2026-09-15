@@ -75,10 +75,13 @@ describe("CADENCE_RULES", () => {
     expect(CADENCE_RULES[6].body(NUMBERS)).toContain(String(CONTACT_THIS_WEEK_N));
   });
 
-  // Rules 2 and 6 are the two nothing enforces. Marking a rule automatic when
-  // it is not is worse than not listing it: it says the system has your back.
+  // Rules 1, 2 and 6 are the ones nothing enforces. Marking a rule automatic
+  // when it is not is worse than not listing it: it says the system has your
+  // back. Rule 1 especially — outreach_steps holds the sequence, but nothing
+  // reads it to schedule anything, so the steps are a reference, not a queue.
+  // When something does drive them, this list loses the 1.
   it("does not claim a rule is automatic when nothing enforces it", () => {
     const manual = CADENCE_RULES.filter((r) => r.enforcement.kind === "manual");
-    expect(manual.map((r) => r.n)).toEqual([2, 6]);
+    expect(manual.map((r) => r.n)).toEqual([1, 2, 6]);
   });
 });
