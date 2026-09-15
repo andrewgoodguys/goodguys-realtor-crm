@@ -1,5 +1,14 @@
 """Split a brokerage string into brand and office.
 
+TWO COPIES. This file and goodguys-pipeline/pipeline/brokerages.py are the same
+module and must stay identical — this repo needs it to import the workbook and
+to fix up rows already stored, and the pipeline needs it to write agents to the
+CRM directly. Same arrangement as src/lib/templates.ts and pipeline/messages.py.
+
+This repo has no Python test harness, so the check lives in the other one:
+goodguys-pipeline/tests/test_brokerages.py loads *this* file and runs both
+copies over one case list. Change one, change the other, then run that.
+
 The workbook has one free-text field where two things live. Sometimes it is
 purely a firm — "Dorsey Alston Realtors". Sometimes the branch is welded onto
 the front brand — "Keller Williams Realty Peachtree Rd." is the Peachtree Rd.

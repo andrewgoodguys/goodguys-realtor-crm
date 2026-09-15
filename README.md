@@ -24,8 +24,9 @@ RLS). Deployed to GitHub Pages by Actions on every push to `main`.
 
 The Python pipeline still does the weekly work — it's the half that drives
 browsers (SmartMoving → Gmail → Redfin → GeorgiaMLS), and that can't be
-scripted. What changes is where it writes: the CRM database instead of the
-workbook.
+scripted. What changed is where it writes: `push_to_crm.py` puts the run into
+Postgres directly, so the CRM is no longer only as fresh as the last time
+somebody imported a spreadsheet. The workbook is still written, as an export.
 
 The division of labour is unchanged:
 
@@ -80,6 +81,9 @@ bun run dev               # http://localhost:5174
 ```
 
 ### 3. Import the workbook (once)
+
+> Historic, and still the way to reload from the .xlsx. The weekly run now
+> writes here directly — `python scripts/push_to_crm.py` in goodguys-pipeline.
 
 ```bash
 set SUPABASE_URL=https://qqkrfvrbbkcwigbjtqpp.supabase.co
@@ -196,10 +200,19 @@ they open the app. `public.people.email` is the link.
 - The roster seeded by `0010` is Jack Sawyer, Trent Barron and Sy Lovingood,
   alongside Andrew and Avery.
 
-**The weekly run still only knows two names.** `pipeline/owners.py` splits new
-agents by md5-of-brokerage across `OWNERS` in `pipeline/config.py`. People added
-in the app are assignable immediately but don't enter that automatic split until
-that list is updated too.
+**Assignment is the database's job now.** `pipeline/owners.py` hashed the
+brokerage into a two-name tuple and took it modulo the tuple's length, so
+adding three people would have reshuffled nearly every agent and discarded
+everything claimed by hand. `pick_owner_for()` (migration `0011`) decides
+instead, and only ever for a row that has no owner:
+
+1. `settings.default_owner`, if one is set;
+2. whoever already works that brokerage — one firm, one relationship, one
+   person, which is the part of the old split worth keeping;
+3. whoever is carrying the fewest agents.
+
+The weekly run never sends `owner_name` at all. **Deal them out** on the
+dashboard runs the same rule over the ownerless pile.
 
 ### My agents
 
@@ -222,15 +235,28 @@ everyone can still see and edit everything.
 
 ## The outreach cadence
 
-**Read it in the app: `/cadence`.** That page is the one people actually
-following the cadence can reach, and it renders the sequence from
+**Read it in the app: `/cadence`.** That page renders the sequence from
 `public.outreach_steps` and the gaps from `public.settings`, so it can't
 quietly disagree with what the database is doing. Each rule is marked
-**Automatic** — the database or the call list holds you to it — or **On you**,
-meaning nothing does. Rules 1, 2 and 6 are on you: `outreach_steps` records the
-intro sequence but nothing reads it to schedule anything, so `sync_agent_touch()`
-puts every agent the same `follow_up_days` out regardless of which step they are
-on. Driving the sequence off those rows is the next thing worth building.
+**Automatic** — something holds you to it — or **On you**, meaning nothing
+does. Rule 6 is the only one left on you.
+
+`recompute_touch_schedule()` (migration `0011`) is the engine. It is the one
+place that answers *when is this agent next due, and what do they owe*, and
+both the touch trigger and `reschedule_follow_ups()` call it.
+
+- **Mid-sequence**, the next step is due `day_offset` days after the **first**
+  touch, not the last — so a call made late doesn't push the email out behind
+  it. The step is derived from the touch count rather than incremented, so
+  deleting a touch corrects the sequence instead of stranding it.
+- **A full sequence with no reply** sets `Attempted — no response` and rests
+  the agent for `settings.no_response_pause_days`. A reply pulls them straight
+  back out: the pause is a pause, not a verdict.
+- **Partners and live conversations** are never put on the sequence at all,
+  which is rule 6 — `in_intro_sequence()` lists the two statuses it applies to.
+- The call list shows the owed step (*Step 2 · Call — day 4*) and makes that
+  channel the primary button, which is rule 4 as a layout: one channel per
+  touch, so one button.
 
 The rules below were footnotes at the bottom of the workbook's Outreach
 Tracker sheet, typed into the `Agent Name` column — which is how eight of them
