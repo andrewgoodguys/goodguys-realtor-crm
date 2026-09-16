@@ -194,6 +194,22 @@ export interface OwnerWorkload {
   due_count: number;
 }
 
+/** A row of public.preview_rebalance() — what an even redeal would produce.
+ *  `moving` is the number that makes it a decision rather than a formality. */
+export interface RebalancePreview {
+  owner_name: string;
+  agent_count: number;
+  moving: number;
+}
+
+/** public.last_rebalance — the redeal that can still be undone, if any. */
+export interface LastRebalance {
+  run_id: string;
+  run_at: string;
+  run_by: string | null;
+  moved: number;
+}
+
 /** The single row of public.settings. */
 export interface Settings {
   id: boolean;

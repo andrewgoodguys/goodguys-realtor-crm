@@ -9,7 +9,9 @@ import type {
   Lead,
   OutreachStep,
   OwnerWorkload,
+  LastRebalance,
   Person,
+  RebalancePreview,
   Run,
   Settings,
   Touch,
@@ -362,6 +364,65 @@ export function useDistributeUnassigned() {
       return (data as number) ?? 0;
     },
     onSuccess: () => invalidateAgentViews(qc),
+  });
+}
+
+/* --------------------------------------------------------------- rebalance */
+
+/** What an even redeal would produce, without doing it. Same function the real
+ *  thing uses, so the preview cannot differ from the result. */
+export function usePreviewRebalance(enabled: boolean) {
+  return useQuery({
+    enabled,
+    queryKey: ["rebalance", "preview"],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("preview_rebalance");
+      if (error) throw error;
+      return (data ?? []) as RebalancePreview[];
+    },
+  });
+}
+
+/** The redeal that can still be taken back, if there is one. */
+export function useLastRebalance() {
+  return useQuery({
+    queryKey: ["rebalance", "last"],
+    queryFn: async () => {
+      const { data } = await supabase.from("last_rebalance").select("*").maybeSingle();
+      return (data as LastRebalance | null) ?? null;
+    },
+  });
+}
+
+/** Deal every active agent out evenly. Returns the run id, or null if the book
+ *  was already even and nothing moved. */
+export function useRebalance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.rpc("rebalance_all_agents");
+      if (error) throw error;
+      return (data as string | null) ?? null;
+    },
+    onSuccess: () => {
+      invalidateAgentViews(qc);
+      qc.invalidateQueries({ queryKey: ["rebalance"] });
+    },
+  });
+}
+
+export function useUndoRebalance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (runId: string) => {
+      const { data, error } = await supabase.rpc("undo_rebalance", { run: runId });
+      if (error) throw error;
+      return (data as number) ?? 0;
+    },
+    onSuccess: () => {
+      invalidateAgentViews(qc);
+      qc.invalidateQueries({ queryKey: ["rebalance"] });
+    },
   });
 }
 

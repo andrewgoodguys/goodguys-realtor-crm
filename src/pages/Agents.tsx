@@ -10,7 +10,7 @@ import {
   type AgentFilters,
 } from "@/hooks/useData";
 import { fmtDate, fmtMoney, fmtPhone, priorityTone } from "@/lib/format";
-import { RELATIONSHIP_STATUSES } from "@/lib/types";
+import { RELATIONSHIP_STATUSES, type Agent, type Person } from "@/lib/types";
 import {
   Badge,
   Button,
@@ -20,6 +20,7 @@ import {
   Input,
   Select,
   Spinner,
+  cn,
 } from "@/components/ui";
 
 /** The owner filter's own value for "whoever I am". Resolved to a name before
@@ -299,11 +300,15 @@ export default function Agents() {
                         {a.last_touch ? fmtDate(a.last_touch) : "never"}
                       </Td>
                       <Td className="hidden md:table-cell">
-                        {a.owner_name ? (
-                          <Badge tone={isMine ? "brand" : "info"}>{a.owner_name}</Badge>
-                        ) : (
-                          <Badge tone="warn">Unassigned</Badge>
-                        )}
+                        <OwnerCell
+                          agent={a}
+                          people={people}
+                          mine={isMine}
+                          busy={assign.isPending}
+                          onChange={(owner) =>
+                            assign.mutate({ ids: [a.id], owner })
+                          }
+                        />
                       </Td>
                     </tr>
                   );
@@ -314,6 +319,56 @@ export default function Agents() {
         </Card>
       )}
     </div>
+  );
+}
+
+/** The owner, editable in place.
+ *
+ *  Reassigning one agent used to mean opening their page, or ticking a box and
+ *  using the bulk bar — both of which are the wrong shape for the common case,
+ *  which is scanning the list and moving one person. A select shows who owns
+ *  the agent and changes it in the same gesture.
+ *
+ *  Deactivated people are not offered, but whoever owns this agent today is
+ *  always in the list: a select whose current value is missing renders blank,
+ *  which would read as unassigned. */
+function OwnerCell({
+  agent,
+  people,
+  mine,
+  busy,
+  onChange,
+}: {
+  agent: Agent;
+  people: Person[];
+  mine: boolean;
+  busy: boolean;
+  onChange: (owner: string | null) => void;
+}) {
+  const known = people.some((p) => p.name === agent.owner_name);
+
+  return (
+    <Select
+      aria-label={`Owner of ${agent.name}`}
+      disabled={busy}
+      className={cn(
+        "h-8 w-full max-w-36 text-sm",
+        !agent.owner_name && "text-[var(--text-muted)]",
+        mine && "font-semibold",
+      )}
+      value={agent.owner_name ?? ""}
+      onChange={(e) => onChange(e.target.value || null)}
+    >
+      <option value="">Unassigned</option>
+      {people.map((p) => (
+        <option key={p.name} value={p.name}>
+          {p.name}
+        </option>
+      ))}
+      {agent.owner_name && !known && (
+        <option value={agent.owner_name}>{agent.owner_name} (inactive)</option>
+      )}
+    </Select>
   );
 }
 

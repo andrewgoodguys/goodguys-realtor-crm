@@ -2,8 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Check, Plus, RotateCcw } from "lucide-react";
 import {
   useAddPerson,
+  useLastRebalance,
   usePeople,
+  usePreviewRebalance,
+  useRebalance,
   useSettings,
+  useUndoRebalance,
   useUpdatePerson,
   useUpdateSettings,
 } from "@/hooks/useData";
@@ -84,7 +88,12 @@ export default function Settings() {
       {section === "branding" && <Branding settings={settings} />}
       {section === "cadence" && <Cadence settings={settings} />}
       {section === "templates" && <Templates settings={settings} />}
-      {section === "people" && <People />}
+      {section === "people" && (
+        <div className="space-y-4">
+          <People />
+          <Rebalance />
+        </div>
+      )}
     </div>
   );
 }
@@ -436,6 +445,114 @@ function Templates({ settings }: { settings: SettingsRow }) {
         </div>
       </Card>
     </div>
+  );
+}
+
+/* -------------------------------------------------------------- rebalance */
+
+/** Deal the whole book out again.
+ *
+ *  The largest single change anyone can make here, so it is deliberately three
+ *  clicks and not one: see the split, confirm it, and undo it afterwards if it
+ *  was wrong. pick_owner_for() only ever fires when an agent is created, so
+ *  nothing else will ever even out a book that started lopsided.
+ */
+function Rebalance() {
+  const [open, setOpen] = useState(false);
+  const preview = usePreviewRebalance(open);
+  const last = useLastRebalance();
+  const run = useRebalance();
+  const undo = useUndoRebalance();
+
+  const rows = preview.data ?? [];
+  const moving = rows.reduce((n, r) => n + r.moving, 0);
+  const total = rows.reduce((n, r) => n + r.agent_count, 0);
+
+  return (
+    <Card>
+      <CardHeader
+        title="Even out the book"
+        subtitle="Deal every active agent out again — highest priority first, round-robin, so everyone gets a comparable share of the top of the list."
+      />
+
+      <div className="space-y-3 p-4">
+        {!open ? (
+          <Button onClick={() => setOpen(true)}>Show me what would change</Button>
+        ) : preview.isLoading ? (
+          <Spinner label="Working out the split…" />
+        ) : preview.error ? (
+          <ErrorState error={preview.error} />
+        ) : (
+          <>
+            <ul className="divide-y divide-[var(--border)] rounded-lg border border-[var(--border)]">
+              {rows.map((r) => (
+                <li key={r.owner_name} className="flex items-center gap-3 px-3 py-2 text-sm">
+                  <span className="font-medium">{r.owner_name}</span>
+                  <span className="nums muted ml-auto">
+                    {r.agent_count} agents
+                    {r.moving > 0 && ` · ${r.moving} moving in`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+
+            <p className="text-sm">
+              {moving === 0 ? (
+                <span className="muted">
+                  Already even — nothing would move.
+                </span>
+              ) : (
+                <>
+                  <strong>{moving}</strong> of {total} agents would change hands.
+                  Do-not-contact agents are left alone.
+                </>
+              )}
+            </p>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="primary"
+                disabled={moving === 0}
+                loading={run.isPending}
+                onClick={() => run.mutate(undefined, { onSuccess: () => setOpen(false) })}
+              >
+                Deal them out
+              </Button>
+              <Button variant="ghost" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+            </div>
+          </>
+        )}
+
+        {run.error && <ErrorState error={run.error} />}
+        {undo.error && <ErrorState error={undo.error} />}
+
+        {last.data && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg bg-[var(--surface-2)] p-3 text-sm">
+            <span>
+              Last redeal moved <strong>{last.data.moved}</strong> agents
+              {last.data.run_by && ` · ${last.data.run_by.split("@")[0]}`}
+              {" · "}
+              {new Date(last.data.run_at).toLocaleString()}
+            </span>
+            <Button
+              size="sm"
+              className="ml-auto"
+              loading={undo.isPending}
+              onClick={() => undo.mutate(last.data!.run_id)}
+            >
+              Undo it
+            </Button>
+          </div>
+        )}
+      </div>
+
+      <p className="muted border-t border-[var(--border)] px-4 py-3 text-sm">
+        Undo puts back only the agents still sitting where the redeal left them,
+        so anything claimed by hand since stays claimed.
+      </p>
+    </Card>
   );
 }
 
