@@ -2,7 +2,19 @@
 export type Owner = string;
 export type PhoneType = "direct" | "office" | "unknown";
 export type AgentRole = "listing" | "buying";
-export type Channel = "call" | "text" | "email" | "note" | "meeting";
+export type Channel = "call" | "text" | "email" | "letter" | "note" | "meeting";
+
+/** The channels that count toward a weekly contact target — everything but
+ *  `note`, which records something rather than reaching anyone. Mirrors
+ *  `public.is_contact_channel()`; the scoreboard is counted in the database,
+ *  so this is for labelling, not arithmetic. */
+export const CONTACT_CHANNELS: readonly Channel[] = [
+  "call",
+  "text",
+  "email",
+  "letter",
+  "meeting",
+] as const;
 
 export interface Agent {
   id: string;
@@ -169,6 +181,9 @@ export interface Person {
   email: string | null;
   active: boolean;
   sort_order: number;
+  /** Their own contacts-per-week number. Null inherits
+   *  `settings.weekly_contact_target` — no override, not a target of zero. */
+  weekly_contact_target: number | null;
   created_at: string;
 }
 
@@ -221,6 +236,8 @@ export interface Settings {
 
   follow_up_days: number;
   due_window_days: number;
+  /** Contacts per person per week, for anyone without their own number. */
+  weekly_contact_target: number;
   /** Rule 2's pause after a full sequence went unanswered. */
   no_response_pause_days: number;
   default_owner: string | null;
@@ -242,4 +259,26 @@ export interface Branding {
   logo_url: string | null;
   accent_color: string;
   login_blurb: string;
+}
+
+/** A row of public.contact_scoreboard — how one person is tracking against
+ *  their weekly contact target, and how far their agents have slipped.
+ *
+ *  Counted by who *logged* the touch, not who owns the agent: the target is a
+ *  measure of somebody's own week, and covering for a teammate should show up
+ *  on the week of whoever actually made the call. */
+export interface ContactScore {
+  owner_name: string;
+  email: string | null;
+  active: boolean;
+  sort_order: number;
+  target: number;
+  /** True when the number is theirs, false when inherited from settings. */
+  has_own_target: boolean;
+  done_this_week: number;
+  done_this_month: number;
+  /** Never negative — a surplus reads off done vs target. */
+  remaining_this_week: number;
+  overdue_agents: number;
+  due_agents: number;
 }

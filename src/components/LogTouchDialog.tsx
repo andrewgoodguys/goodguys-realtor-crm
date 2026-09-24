@@ -7,6 +7,7 @@ const CHANNELS: Array<{ value: Channel; label: string }> = [
   { value: "call", label: "Call" },
   { value: "text", label: "Text" },
   { value: "email", label: "Email" },
+  { value: "letter", label: "Letter" },
   { value: "meeting", label: "Meeting" },
   { value: "note", label: "Note" },
 ];
@@ -65,7 +66,7 @@ export default function LogTouchDialog({
       <form onSubmit={onSubmit} className="space-y-4">
         <div>
           <span className="mb-1.5 block text-sm font-medium">Channel</span>
-          <div className="grid grid-cols-5 gap-1.5">
+          <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6">
             {CHANNELS.map((c) => (
               <button
                 key={c.value}

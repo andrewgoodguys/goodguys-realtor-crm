@@ -1,5 +1,14 @@
 import { Link } from "react-router-dom";
-import { CircleCheck, Hand, Mail, MessageSquare, PhoneCall, StickyNote, Users } from "lucide-react";
+import {
+  CircleCheck,
+  Hand,
+  Mail,
+  Mailbox,
+  MessageSquare,
+  PhoneCall,
+  StickyNote,
+  Users,
+} from "lucide-react";
 import { useOutreachSteps, useSettings } from "@/hooks/useData";
 import {
   CADENCE_RULES,
@@ -16,6 +25,7 @@ const CHANNEL_ICON: Record<Channel, typeof PhoneCall> = {
   call: PhoneCall,
   text: MessageSquare,
   email: Mail,
+  letter: Mailbox,
   note: StickyNote,
   meeting: Users,
 };

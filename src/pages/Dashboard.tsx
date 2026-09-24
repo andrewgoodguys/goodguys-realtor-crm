@@ -1,8 +1,9 @@
 import { Link } from "react-router-dom";
-import { ArrowRight, ListChecks, PhoneCall } from "lucide-react";
+import { ArrowRight, Check, ListChecks, PhoneCall } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import {
   UNASSIGNED,
+  useContactScoreboard,
   useDashboardStats,
   useDistributeUnassigned,
   useOwnerWorkload,
@@ -12,7 +13,7 @@ import {
 } from "@/hooks/useData";
 import { fmtDate, fmtRelative } from "@/lib/format";
 import { isMissingSchema } from "@/lib/supabase";
-import type { OwnerWorkload } from "@/lib/types";
+import type { ContactScore, OwnerWorkload } from "@/lib/types";
 import {
   Badge,
   Button,
@@ -28,6 +29,7 @@ export default function Dashboard() {
   const { owner } = useAuth();
   const stats = useDashboardStats();
   const workload = useOwnerWorkload();
+  const scoreboard = useContactScoreboard();
   const touches = useRecentTouches(12);
   const runs = useRuns();
   const people = usePeople(true).data ?? [];
@@ -49,6 +51,12 @@ export default function Dashboard() {
   const lastRun = runs.data?.[0];
   const responseRate =
     s.contactedCount > 0 ? Math.round((s.respondedCount / s.contactedCount) * 100) : 0;
+
+  // The team's week is the sum of everyone's, not a separate query — one
+  // number that can't disagree with the rows printed underneath it.
+  const board = scoreboard.data ?? [];
+  const teamDone = board.reduce((n, r) => n + r.done_this_week, 0);
+  const teamTarget = board.reduce((n, r) => n + r.target, 0);
 
   return (
     <div className="space-y-4">
@@ -88,6 +96,39 @@ export default function Dashboard() {
           hint={`${s.respondedCount} of ${s.contactedCount} contacted`}
         />
       </div>
+
+      <Card>
+        <CardHeader
+          title="Contacts this week"
+          subtitle={
+            scoreboard.data?.length
+              ? `${teamDone} of ${teamTarget} logged · week starts Monday`
+              : "Contacts per person, against the target set in Settings"
+          }
+        />
+        <div className="p-4">
+          {scoreboard.isLoading ? (
+            <Spinner />
+          ) : isMissingSchema(scoreboard.error) ? (
+            <p className="muted text-sm">
+              Waiting on migration <code>0015_contacts_per_week</code> — run it and
+              this fills in.
+            </p>
+          ) : scoreboard.error ? (
+            <ErrorState error={scoreboard.error} />
+          ) : !scoreboard.data?.length ? (
+            <p className="muted text-sm">
+              Nobody in{" "}
+              <Link to="/settings" className="text-brand-600 hover:underline">
+                Settings → People
+              </Link>{" "}
+              yet.
+            </p>
+          ) : (
+            <Scoreboard rows={scoreboard.data} me={owner} />
+          )}
+        </div>
+      </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
@@ -269,6 +310,83 @@ function Workload({
           </Button>
         </div>
       )}
+    </div>
+  );
+}
+
+/** How everyone is tracking against their weekly contact target.
+ *
+ *  Two different numbers sit on each row and they are not the same thing. The
+ *  bar is *this week's effort* — did you make your contacts. The overdue badge
+ *  is *the backlog* — how many of your agents the cadence says you have already
+ *  slipped past. Somebody can hit their target every week and still be building
+ *  a backlog, if their book is bigger than their number; that pair is the whole
+ *  point of showing them side by side. */
+function Scoreboard({ rows, me }: { rows: ContactScore[]; me: string | null }) {
+  return (
+    <div className="space-y-3">
+      {rows.map((r) => {
+        const mine = r.owner_name === me;
+        const hit = r.target > 0 && r.done_this_week >= r.target;
+        // A target of 0 means nobody set one — an empty bar, not a full one.
+        const pct =
+          r.target > 0 ? Math.min(100, Math.round((r.done_this_week / r.target) * 100)) : 0;
+
+        return (
+          <div key={r.owner_name}>
+            <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1 text-sm">
+              <span className={mine ? "font-semibold" : ""}>
+                {r.owner_name}
+                {mine && <span className="muted text-xs"> · you</span>}
+                {!r.has_own_target && r.target > 0 && (
+                  <span className="muted text-xs"> · team default</span>
+                )}
+              </span>
+
+              <span className="flex items-center gap-2">
+                {r.overdue_agents > 0 && (
+                  <Link
+                    to={`/agents?owner=${encodeURIComponent(r.owner_name)}`}
+                    className="shrink-0"
+                    title={`${r.overdue_agents} of their agents are past due`}
+                  >
+                    <Badge tone="warn">{r.overdue_agents} overdue</Badge>
+                  </Link>
+                )}
+                <span className="nums muted whitespace-nowrap text-xs">
+                  {r.target > 0 ? (
+                    <>
+                      <span className={hit ? "font-semibold text-brand-600" : "font-semibold"}>
+                        {r.done_this_week}
+                      </span>
+                      {" / "}
+                      {r.target}
+                      {hit ? (
+                        <Check className="ml-1 inline size-3.5 text-brand-600" />
+                      ) : (
+                        ` · ${r.remaining_this_week} to go`
+                      )}
+                    </>
+                  ) : (
+                    <>{r.done_this_week} logged · no target set</>
+                  )}
+                </span>
+              </span>
+            </div>
+
+            <div className="mt-1 h-2 overflow-hidden rounded-full bg-[var(--surface-2)]">
+              <div
+                className={
+                  hit ? "h-full bg-brand-600" : mine ? "h-full bg-brand-500" : "h-full bg-sky-500"
+                }
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+
+            <p className="muted mt-1 text-xs">{r.done_this_month} this month</p>
+          </div>
+        );
+      })}
     </div>
   );
 }

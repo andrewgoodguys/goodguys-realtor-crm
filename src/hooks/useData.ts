@@ -5,6 +5,7 @@ import type {
   Agent,
   Branding,
   BrokerageSummary,
+  ContactScore,
   DueThisWeekRow,
   Lead,
   OutreachStep,
@@ -24,6 +25,7 @@ function invalidateAgentViews(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ["due"] });
   qc.invalidateQueries({ queryKey: ["stats"] });
   qc.invalidateQueries({ queryKey: ["workload"] });
+  qc.invalidateQueries({ queryKey: ["scoreboard"] });
 }
 
 function unwrap<T>({ data, error }: { data: T | null; error: unknown }): T {
@@ -350,6 +352,26 @@ export function useOwnerWorkload() {
           .eq("active", true)
           .order("sort_order"),
       ) as OwnerWorkload[],
+  });
+}
+
+/** How everyone is tracking against their weekly contact target.
+ *
+ *  Every number here is computed in the view, on purpose. Counting touches in
+ *  the browser would mean fetching them all, and the week boundary would then
+ *  be the viewer's clock rather than the company's — somebody in another time
+ *  zone would see a different week than the person sitting next to them. */
+export function useContactScoreboard() {
+  return useQuery({
+    queryKey: ["scoreboard"],
+    queryFn: async () =>
+      unwrap(
+        await supabase
+          .from("contact_scoreboard")
+          .select("*")
+          .eq("active", true)
+          .order("sort_order"),
+      ) as ContactScore[],
   });
 }
 

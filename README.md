@@ -11,7 +11,7 @@ RLS). Deployed to GitHub Pages by Actions on every push to `main`.
 
 | Page | What it's for |
 |---|---|
-| **Dashboard** | Who's due, who has what, agents nobody owns, response rate, last pipeline run |
+| **Dashboard** | Who's due, who has what, contacts against each person's weekly target, agents nobody owns, response rate, last pipeline run |
 | **Call list** | The work queue — priority order, tap-to-call, tap-to-text with the template prefilled, one-tap logging |
 | **Agents** | All agents, searchable and filterable; status and notes editable |
 | **Brokerages** | Every firm, biggest first — click through to its agents, then narrow to one office |
@@ -238,6 +238,52 @@ everyone can still see and edit everything.
   import, which the agent page reports as "from the original split by
   brokerage" rather than inventing a person.
 
+## Contacts per week
+
+Each person has a number of contacts they are working to, and the dashboard
+says how everyone is tracking against theirs.
+
+- **Settings → People** holds a **team default** and a per-person override.
+  Blank means "use the team default" — an absent override, not a target of
+  zero, so a new hire inherits a real number instead of reading as perfectly
+  on track for doing nothing. Targets save as you leave the box.
+- **Dashboard → Contacts this week** draws a bar each: logged against target,
+  how many to go, the month to date, and an **overdue** badge.
+
+The bar and the badge are deliberately different measurements. The bar is
+*this week's effort*. The badge is *the backlog* — agents whose
+`next_touch_due` has already passed. Somebody with a big book can hit their
+number every week and still fall further behind, and that pair is the only way
+to see it.
+
+Weeks run Monday to Sunday in **America/New_York**, not UTC — on UTC a touch
+logged at 8pm on a Sunday lands in the following week. The zone is named once,
+in `contact_scoreboard`.
+
+### What counts as a contact
+
+Every channel except `note`: **call, text, email, letter, meeting**. A note
+records something about an agent rather than reaching them, and a target that
+could be met without contacting anybody would not be worth having.
+`public.is_contact_channel()` is the rule; `CONTACT_CHANNELS` in
+`src/lib/types.ts` mirrors it and `src/lib/channels.test.ts` pins the two
+together.
+
+> **`letter` is new in `0015`.** Post was always outreach and just had nowhere
+> to go. It is a channel on the touch log, not a step in the intro sequence —
+> rule 1 is still text → call → email.
+
+Touches count toward whoever **logged** them, not whoever owns the agent:
+covering for a teammate should land on the week of the person who made the
+call.
+
+> **One seam worth knowing about.** `recompute_touch_schedule()` still counts
+> *every* touch when advancing the intro sequence, so a note moves an agent
+> along even though it does not count toward a target. Two definitions of "a
+> contact", on purpose — narrowing the cadence's would re-derive the schedule
+> for every agent already in the book, which is a bigger decision than `0015`
+> should make on its own.
+
 ## The outreach cadence
 
 **Read it in the app: `/cadence`.** That page renders the sequence from
@@ -313,11 +359,20 @@ rule 7.
   authenticated` on a new function restricts nothing — it names a role that
   already had the right through PUBLIC, which `anon` belongs to. On a
   `security definer` function that means anyone holding the anon key, which is
-  in the bundle by design, can call it with RLS switched off. `0014` revokes
-  the default on every definer function here, guards the ones the app calls
-  with `is_goodguys()`, and sets `alter default privileges ... revoke execute
-  on functions from public` so the next migration doesn't reopen it. A new
-  definer function still needs its own `revoke`/`grant` pair and its own guard.
+  in the bundle by design, can call it with RLS switched off. `0014` revokes it
+  on every definer function by name and guards the ones the app calls with
+  `is_goodguys()`.
+
+  `0014` also tried to make that automatic with `alter default privileges ...
+  revoke execute on functions from public`, **and that does not work here** —
+  Supabase keeps a `pg_default_acl` entry granting EXECUTE to `anon` by name,
+  which a revoke from `PUBLIC` leaves standing. `0015` reintroduced an
+  anon-callable function within one migration of the claim. So the rule is
+  manual and stated once: **a new `security definer` function gets its own
+  `revoke all on function <sig> from public, anon;` and its own guard.**
+  `0016` ends with an assertion over `pg_proc` that fails the next `db push`
+  if any definer function in `public` is executable by `anon`, which is the
+  part that actually holds the line.
 - **Deep links need `404.html`.** Pages has no SPA rewrite; the workflow
   copies `index.html` over so a refresh on `/agents/<id>` works.
 

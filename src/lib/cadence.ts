@@ -146,6 +146,8 @@ export function channelVerb(channel: OutreachStep["channel"]): string {
       return "Call";
     case "email":
       return "Email";
+    case "letter":
+      return "Letter";
     case "meeting":
       return "Meet";
     case "note":

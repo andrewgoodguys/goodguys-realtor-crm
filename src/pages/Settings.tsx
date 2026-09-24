@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { Check, Plus, RotateCcw } from "lucide-react";
 import {
   useAddPerson,
@@ -90,7 +91,7 @@ export default function Settings() {
       {section === "templates" && <Templates settings={settings} />}
       {section === "people" && (
         <div className="space-y-4">
-          <People />
+          <People settings={settings} />
           <Rebalance />
         </div>
       )}
@@ -558,10 +559,11 @@ function Rebalance() {
 
 /* ----------------------------------------------------------------- people */
 
-function People() {
+function People({ settings }: { settings: SettingsRow }) {
   const peopleQ = usePeople(true);
   const addPerson = useAddPerson();
   const updatePerson = useUpdatePerson();
+  const updateSettings = useUpdateSettings();
   const [newName, setNewName] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameTo, setRenameTo] = useState("");
@@ -574,8 +576,34 @@ function People() {
     <Card>
       <CardHeader
         title="People"
-        subtitle="Who agents can be assigned to. Signing in is separate — anyone with a GoodGuys address can."
+        subtitle="Who agents can be assigned to, and how many contacts a week each of them is working to."
       />
+
+      {/* The column arrives with 0015. Until it does this is `undefined`, and
+          printing that in a number box helps nobody — say what is missing, the
+          way every other pre-migration panel does. */}
+      {settings.weekly_contact_target == null ? (
+        <p className="muted border-b border-[var(--border)] px-4 py-3 text-sm">
+          Waiting on migration <code>0015_contacts_per_week</code> — run it and
+          weekly contact targets appear here.
+        </p>
+      ) : (
+        <div className="flex flex-wrap items-center gap-3 border-b border-[var(--border)] bg-[var(--surface-2)] px-4 py-3">
+          <span className="text-sm font-medium">Team default</span>
+          <TargetInput
+            value={settings.weekly_contact_target}
+            placeholder={undefined}
+            onCommit={(n) =>
+              n !== null && updateSettings.mutate({ weekly_contact_target: n })
+            }
+          />
+          <span className="muted text-sm">contacts per week</span>
+          <span className="muted ml-auto text-xs">
+            What anyone without their own number is held to.
+          </span>
+        </div>
+      )}
+
       <ul className="divide-y divide-[var(--border)]">
         {people.map((p) => (
           <li key={p.name} className="flex flex-wrap items-center gap-3 px-4 py-3">
@@ -620,6 +648,25 @@ function People() {
                   </span>
                 </span>
                 <div className="ml-auto flex items-center gap-2">
+                  {/* Blank means "whatever the team default is", which is why
+                      the default shows through as the placeholder rather than
+                      being copied into the box. A copied number would go stale
+                      the moment the default changed. */}
+                  {settings.weekly_contact_target != null && (
+                    <label className="flex items-center gap-2">
+                      <span className="muted text-xs">contacts/wk</span>
+                      <TargetInput
+                        value={p.weekly_contact_target ?? null}
+                        placeholder={settings.weekly_contact_target}
+                        onCommit={(n) =>
+                          updatePerson.mutate({
+                            name: p.name,
+                            patch: { weekly_contact_target: n },
+                          })
+                        }
+                      />
+                    </label>
+                  )}
                   <Button
                     size="sm"
                     variant="ghost"
@@ -677,8 +724,59 @@ function People() {
         only if you want to assign agents to somebody before they arrive.
         Renaming carries that person&rsquo;s agents with them. Deactivating hides
         them from the assignment picker but leaves history intact — nobody is
-        deleted.
+        deleted. Targets save as you leave the box; clear one to put that person
+        back on the team default. Progress against them is on the{" "}
+        <Link to="/" className="text-brand-600 hover:underline">
+          dashboard
+        </Link>
+        .
       </p>
     </Card>
+  );
+}
+
+/** A contacts-per-week box that saves when you leave it.
+ *
+ *  Empty is a real value, not a validation failure: for a person it means "use
+ *  the team default", so the box commits null rather than refusing. The team
+ *  default itself has no null to fall back to, which is why its caller ignores
+ *  one. */
+function TargetInput({
+  value,
+  placeholder,
+  onCommit,
+}: {
+  value: number | null;
+  placeholder: number | undefined;
+  onCommit: (next: number | null) => void;
+}) {
+  const [text, setText] = useState(value === null ? "" : String(value));
+  useEffect(() => setText(value === null ? "" : String(value)), [value]);
+
+  const commit = () => {
+    const trimmed = text.trim();
+    const next = trimmed === "" ? null : Number(trimmed);
+    if (next !== null && (!Number.isInteger(next) || next < 0 || next > 500)) {
+      setText(value === null ? "" : String(value));   // out of range, put it back
+      return;
+    }
+    if (next !== value) onCommit(next);
+  };
+
+  return (
+    <Input
+      type="number"
+      min={0}
+      max={500}
+      className="w-20"
+      value={text}
+      placeholder={placeholder === undefined ? undefined : String(placeholder)}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+        if (e.key === "Escape") setText(value === null ? "" : String(value));
+      }}
+    />
   );
 }
