@@ -54,14 +54,19 @@ in code), which is what drives the call list.
 
 Supabase project **`goodguys-realtor-crm`** (`qqkrfvrbbkcwigbjtqpp`).
 
-Paste `supabase/migrations/0001_init.sql` into the SQL Editor and run it, then
-each later migration in order.
+```bash
+supabase link --project-ref qqkrfvrbbkcwigbjtqpp
+supabase db push --linked --dry-run    # names the migrations it would apply
+supabase db push --linked
+```
 
-> **Migrations are applied by pasting, and the remote has no migration history
-> recorded** — `supabase migration list` shows the local files against an empty
-> Remote column. A plain `supabase db push` would try to re-run `0001` against
-> live data. If you ever switch to the CLI, repair first:
-> `supabase migration repair --status applied 0001 0002 …`, then `db push`.
+> **The CLI is the way in now.** This used to say migrations were applied by
+> pasting into the SQL Editor and that the remote had no migration history, so
+> a `db push` would try to re-run `0001` against live data. The history table
+> has since been filled in — `supabase migration list` shows Local and Remote
+> matching through `0014` — so no `migration repair` is needed and `db push`
+> applies only what is actually missing. Dry-run first anyway; it prints the
+> list.
 >
 > The app is deployed by Actions on a push to `main` and the SQL is run by
 > hand, so **run the migration first**. Anything reading a table that isn't
@@ -304,6 +309,15 @@ rule 7.
   everything; the split just decides whose call list is whose.
 - **Touches can be deleted only by the person who logged them** — history gets
   corrected, not quietly erased.
+- **EXECUTE is granted to PUBLIC by default.** `grant execute ... to
+  authenticated` on a new function restricts nothing — it names a role that
+  already had the right through PUBLIC, which `anon` belongs to. On a
+  `security definer` function that means anyone holding the anon key, which is
+  in the bundle by design, can call it with RLS switched off. `0014` revokes
+  the default on every definer function here, guards the ones the app calls
+  with `is_goodguys()`, and sets `alter default privileges ... revoke execute
+  on functions from public` so the next migration doesn't reopen it. A new
+  definer function still needs its own `revoke`/`grant` pair and its own guard.
 - **Deep links need `404.html`.** Pages has no SPA rewrite; the workflow
   copies `index.html` over so a refresh on `/agents/<id>` works.
 
