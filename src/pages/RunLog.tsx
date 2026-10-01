@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { ScrollText } from "lucide-react";
 import { useRuns } from "@/hooks/useData";
 import { fmtDate } from "@/lib/format";
@@ -13,7 +14,12 @@ export default function RunLog() {
     <div className="space-y-4">
       <div>
         <h1 className="text-xl font-semibold">Run log</h1>
-        <p className="muted text-sm">Every weekly pipeline run, newest first</p>
+        <p className="muted text-sm">
+          Every weekly pipeline run, newest first ·{" "}
+          <Link to="/leads" className="text-brand-600 hover:underline">
+            every address it has looked up
+          </Link>
+        </p>
       </div>
 
       {!data?.length ? (

@@ -11,6 +11,8 @@ import type {
   OutreachStep,
   OwnerWorkload,
   LastRebalance,
+  Partner,
+  PartnerType,
   Person,
   RebalancePreview,
   Run,
@@ -129,6 +131,76 @@ export function useDueThisWeek(owner?: string | null) {
       if (owner) q = q.eq("owner_name", owner);
       return unwrap(await q.limit(200)) as DueThisWeekRow[];
     },
+  });
+}
+
+/* ---------------------------------------------------------------- partners */
+
+export interface PartnerFilters {
+  type: PartnerType;
+  search?: string;
+  owner?: string;
+}
+
+/** One list at a time, in research order. "Other" holds two subtypes whose
+ *  ranks each start at 1, so it sorts by subtype first; every other list is
+ *  one ranking across its subtypes, and sorting those by subtype would break
+ *  it up. */
+export function usePartners(filters: PartnerFilters) {
+  return useQuery({
+    queryKey: ["partners", filters],
+    queryFn: async () => {
+      let q = supabase
+        .from("partners")
+        .select("*")
+        .eq("type", filters.type)
+        .eq("do_not_contact", false);
+      if (filters.type === "other_partner") {
+        q = q.order("subtype", { ascending: true, nullsFirst: true });
+      }
+      q = q.order("rank", { ascending: true, nullsFirst: false });
+
+      if (filters.search?.trim()) {
+        const term = `%${filters.search.trim()}%`;
+        q = q.or(
+          `person_name.ilike.${term},company.ilike.${term},city.ilike.${term},phone.ilike.${term}`,
+        );
+      }
+      if (filters.owner === UNASSIGNED) q = q.is("owner_name", null);
+      else if (filters.owner) q = q.eq("owner_name", filters.owner);
+
+      return unwrap(await q.limit(500)) as Partner[];
+    },
+  });
+}
+
+/** How many are on each list, for the tab labels. */
+export function usePartnerCounts() {
+  return useQuery({
+    queryKey: ["partners", "counts"],
+    queryFn: async () => {
+      const rows = unwrap(
+        await supabase.from("partners").select("type").eq("do_not_contact", false),
+      ) as Pick<Partner, "type">[];
+      const counts: Record<string, number> = {};
+      for (const r of rows) counts[r.type] = (counts[r.type] ?? 0) + 1;
+      return counts;
+    },
+  });
+}
+
+/** Claiming a partner, same shape as useAssignAgents. Who and when are stamped
+ *  by stamp_owner_change(), not sent from here. */
+export function useAssignPartners() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ ids, owner }: { ids: string[]; owner: string | null }) => {
+      if (ids.length === 0) return [] as Partner[];
+      return unwrap(
+        await supabase.from("partners").update({ owner_name: owner }).in("id", ids).select(),
+      ) as Partner[];
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["partners"] }),
   });
 }
 

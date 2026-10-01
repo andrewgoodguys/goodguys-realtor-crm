@@ -174,6 +174,46 @@ export const RELATIONSHIP_STATUSES = [
   "DO NOT CONTACT",
 ] as const;
 
+/** The partner lists, in tab order. Keys match the check constraint in 0017. */
+export const PARTNER_TYPES = [
+  { key: "mortgage_lender", label: "Mortgage lenders", short: "Lenders" },
+  { key: "home_organizer", label: "Home organizers", short: "Organizers" },
+  { key: "insurance_agent", label: "Insurance agents", short: "Insurance" },
+  { key: "other_partner", label: "Other partners", short: "Other" },
+] as const;
+
+export type PartnerType = (typeof PARTNER_TYPES)[number]["key"];
+
+/** Non-realtor referral partners, from desk research (0017). */
+export interface Partner {
+  id: string;
+  type: PartnerType;
+  subtype: string | null;
+  rank: number | null;
+  person_name: string | null;
+  title: string | null;
+  company: string | null;
+  license: string | null;
+  phone: string | null;
+  email: string | null;
+  website: string | null;
+  city: string | null;
+  volume: string | null;
+  review_count: number | null;
+  rating: number | null;
+  rank_basis: string | null;
+  source_urls: string[];
+  partner_key: string;
+  owner_name: string | null;
+  owner_assigned_at: string | null;
+  owner_assigned_by: string | null;
+  relationship_status: string;
+  do_not_contact: boolean;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Person {
   name: string;
   /** The login they sign in with, once they have. Null until then — a name

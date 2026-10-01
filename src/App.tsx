@@ -4,9 +4,9 @@ import {
   BarChart3,
   Building,
   Building2,
+  Handshake,
   ListChecks,
   LogOut,
-  MapPinned,
   PhoneCall,
   ScrollText,
   SlidersHorizontal,
@@ -24,6 +24,7 @@ import AgentDetail from "@/pages/AgentDetail";
 import Brokerages from "@/pages/Brokerages";
 import BrokerageDetail from "@/pages/BrokerageDetail";
 import Leads from "@/pages/Leads";
+import Partners from "@/pages/Partners";
 import RunLog from "@/pages/RunLog";
 import Settings from "@/pages/Settings";
 import Cadence from "@/pages/Cadence";
@@ -32,13 +33,19 @@ import Cadence from "@/pages/Cadence";
  *  is for things you do standing in a driveway, and it is already seven columns
  *  wide; Cadence is something you read, so it stays in the header and is linked
  *  from the dashboard and the call list. An eighth column would not have fit —
- *  the grid is fixed, so an extra item silently wraps onto a second row. */
+ *  the grid is fixed, so an extra item silently wraps onto a second row.
+ *
+ *  Leads is not here at all. It is the pipeline's working list — every address
+ *  it looked up and what it found — which nobody calls from. The route stays,
+ *  reached from the Run log and from the dashboard's flagged count. */
 const NAV = [
   { to: "/", label: "Dashboard", icon: BarChart3, end: true, mobile: true },
   { to: "/calls", label: "Call list", icon: PhoneCall, end: false, mobile: true },
   { to: "/agents", label: "Agents", icon: Building2, end: false, mobile: true },
   { to: "/brokerages", label: "Brokerages", short: "Firms", icon: Building, end: false, mobile: true },
-  { to: "/leads", label: "Leads", icon: MapPinned, end: false, mobile: true },
+  // Four lists behind one item — lenders, organizers, insurance, other — as
+  // tabs on the page, which keeps the phone bar at seven.
+  { to: "/partners", label: "Partners", icon: Handshake, end: false, mobile: true },
   { to: "/cadence", label: "Cadence", icon: ListChecks, end: false, mobile: false },
   { to: "/runs", label: "Run log", icon: ScrollText, end: false, mobile: true },
   { to: "/settings", label: "Settings", icon: SlidersHorizontal, end: false, mobile: true },
@@ -128,6 +135,7 @@ export default function App() {
           <Route path="/brokerages" element={<Brokerages />} />
           <Route path="/brokerages/:brokerage" element={<BrokerageDetail />} />
           <Route path="/leads" element={<Leads />} />
+          <Route path="/partners" element={<Partners />} />
           <Route path="/cadence" element={<Cadence />} />
           <Route path="/runs" element={<RunLog />} />
           <Route path="/settings" element={<Settings />} />
