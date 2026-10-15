@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useLogTouch } from "@/hooks/useData";
+import { useLogTouch, type TouchSubject } from "@/hooks/useData";
 import { CALL_OUTCOMES, type Agent, type Channel } from "@/lib/types";
 import { Button, Dialog, Field, Select, Textarea, cn } from "@/components/ui";
 
@@ -12,13 +12,17 @@ const CHANNELS: Array<{ value: Channel; label: string }> = [
   { value: "note", label: "Note" },
 ];
 
+/** For an agent pass `agent`; for anyone else — a partner, a hiring partner —
+ *  pass `subject`, which names the touches column the row goes in. */
 export default function LogTouchDialog({
   agent,
+  subject,
   open,
   onClose,
   defaultChannel = "call",
 }: {
-  agent: Pick<Agent, "id" | "name"> | null;
+  agent?: Pick<Agent, "id" | "name"> | null;
+  subject?: { touch: TouchSubject; name: string } | null;
   open: boolean;
   onClose: () => void;
   defaultChannel?: Channel;
@@ -40,11 +44,12 @@ export default function LogTouchDialog({
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!agent) return;
+    const target = agent ? { agent_id: agent.id } : subject?.touch;
+    if (!target) return;
     setError(null);
     try {
       await logTouch.mutateAsync({
-        agent_id: agent.id,
+        ...target,
         channel,
         outcome: outcome || null,
         got_response: gotResponse,
@@ -61,7 +66,9 @@ export default function LogTouchDialog({
     <Dialog
       open={open}
       onClose={onClose}
-      title={agent ? `Log outreach — ${agent.name}` : "Log outreach"}
+      title={
+        (agent ?? subject) ? `Log outreach — ${agent?.name ?? subject?.name}` : "Log outreach"
+      }
     >
       <form onSubmit={onSubmit} className="space-y-4">
         <div>

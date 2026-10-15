@@ -7,10 +7,12 @@ import {
   useAgents,
   useAssignAgents,
   usePeople,
+  useReferralTotals,
   type AgentFilters,
 } from "@/hooks/useData";
 import { fmtDate, fmtMoney, fmtPhone, priorityTone } from "@/lib/format";
 import { RELATIONSHIP_STATUSES, type Agent, type Person } from "@/lib/types";
+import { ReferredCell } from "@/components/Referred";
 import {
   Badge,
   Button,
@@ -40,21 +42,49 @@ export default function Agents() {
   const people = usePeople().data ?? [];
   const assign = useAssignAgents();
 
-  function setOwnerFilter(next: string) {
-    setParams(next ? { owner: next } : {}, { replace: true });
+  function setOwnerFilter(value: string) {
+    const next = new URLSearchParams(params);
+    if (value) next.set("owner", value);
+    else next.delete("owner");
+    setParams(next, { replace: true });
     setSelected(new Set());
   }
 
+  // "Referred us" lives in the URL too, so the dashboard or a message can link
+  // straight to the agents who have actually sent us work.
+  const referredOnly = params.get("referred") === "1";
+  const referrals = useReferralTotals().data;
+  const referredIds = referredOnly && referrals ? [...referrals.byAgent.keys()] : undefined;
+
   const resolvedOwner =
     ownerFilter === MINE ? (owner ?? undefined) : ownerFilter || undefined;
-  const { data, isLoading, error } = useAgents({ ...filters, owner: resolvedOwner });
+  const { data, isLoading, error } = useAgents({
+    ...filters,
+    owner: resolvedOwner,
+    ids: referredIds,
+  });
 
   const set = (patch: Partial<AgentFilters>) => {
     setFilters((f) => ({ ...f, ...patch }));
     setSelected(new Set());
   };
 
-  const rows = data ?? [];
+  function setReferredOnly(on: boolean) {
+    const next = new URLSearchParams(params);
+    if (on) next.set("referred", "1");
+    else next.delete("referred");
+    setParams(next, { replace: true });
+    setSelected(new Set());
+  }
+
+  // Referrers sort by what they sent us; everyone else keeps priority order.
+  const rows = referredOnly
+    ? [...(data ?? [])].sort(
+        (a, b) =>
+          (referrals?.byAgent.get(b.id)?.referred_revenue ?? 0) -
+          (referrals?.byAgent.get(a.id)?.referred_revenue ?? 0),
+      )
+    : (data ?? []);
   const allSelected = rows.length > 0 && rows.every((a) => selected.has(a.id));
 
   function toggle(id: string) {
@@ -95,7 +125,7 @@ export default function Agents() {
       </div>
 
       <Card className="p-3">
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
           <div className="relative">
             <Search className="muted pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2" />
             <Input
@@ -136,6 +166,18 @@ export default function Agents() {
               onChange={(e) => set({ includeDnc: e.target.checked })}
             />
             Include do-not-contact
+          </label>
+          <label className="flex items-center gap-2 px-1 text-sm">
+            <input
+              type="checkbox"
+              className="size-4 accent-[var(--color-brand-600)]"
+              checked={referredOnly}
+              onChange={(e) => setReferredOnly(e.target.checked)}
+            />
+            Referred us
+            {referrals && (
+              <span className="muted nums text-xs">({referrals.byAgent.size})</span>
+            )}
           </label>
         </div>
       </Card>
@@ -233,6 +275,7 @@ export default function Agents() {
                   <Th>Phone</Th>
                   <Th className="hidden lg:table-cell">Jobs</Th>
                   <Th className="hidden lg:table-cell">Revenue</Th>
+                  <Th>Referred</Th>
                   <Th className="hidden sm:table-cell">Status</Th>
                   <Th className="hidden xl:table-cell">Last touch</Th>
                   <Th className="hidden md:table-cell">Owner</Th>
@@ -292,6 +335,9 @@ export default function Agents() {
                       <Td className="nums hidden lg:table-cell">{a.lifetime_jobs}</Td>
                       <Td className="nums hidden lg:table-cell">
                         {fmtMoney(a.lifetime_revenue)}
+                      </Td>
+                      <Td className="whitespace-nowrap">
+                        <ReferredCell total={referrals?.byAgent.get(a.id)} />
                       </Td>
                       <Td className="hidden sm:table-cell">
                         <span className="muted text-xs">{a.relationship_status}</span>

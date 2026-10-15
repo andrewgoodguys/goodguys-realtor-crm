@@ -79,7 +79,10 @@ export interface Lead {
 
 export interface Touch {
   id: string;
-  agent_id: string;
+  /** Exactly one of these three is set (touches_one_subject, 0019). */
+  agent_id: string | null;
+  partner_id: string | null;
+  hiring_partner_id: string | null;
   lead_id: string | null;
   channel: Channel;
   outcome: string | null;
@@ -210,8 +213,38 @@ export interface Partner {
   relationship_status: string;
   do_not_contact: boolean;
   notes: string | null;
+  last_touch: string | null;
+  next_touch_due: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** One agent's or partner's referrals, from the referral_totals view (0018).
+ *  Counted once the move happened: opportunity_status Closed or Completed. */
+export interface ReferralTotal {
+  agent_id: string | null;
+  partner_id: string | null;
+  referred_jobs: number;
+  referred_revenue: number;
+  upcoming_jobs: number;
+  last_referral: string | null;
+  pays_fee: boolean;
+}
+
+/** A job somebody referred, from the referred_jobs view (0018). */
+export interface ReferredJob {
+  agent_id: string | null;
+  partner_id: string | null;
+  referrer_id: string;
+  affiliate_name: string;
+  pays_fee: boolean;
+  job_id: string;
+  job_number: string | null;
+  job_date: string | null;
+  customer_name: string | null;
+  opportunity_status: string | null;
+  revenue: number | null;
+  counts: boolean;
 }
 
 export interface Person {
@@ -321,4 +354,36 @@ export interface ContactScore {
   remaining_this_week: number;
   overdue_agents: number;
   due_agents: number;
+}
+
+/** The two hiring lists, in tab order. Keys match the check constraint in 0019. */
+export const HIRING_TRACKS = [
+  { key: "crew", label: "Crew hiring", short: "Crew" },
+  { key: "management", label: "Management hiring", short: "Management" },
+] as const;
+
+export type HiringTrack = (typeof HIRING_TRACKS)[number]["key"];
+
+export interface HiringPartner {
+  id: string;
+  track: HiringTrack;
+  person_name: string;
+  title: string | null;
+  organization: string | null;
+  org_type: string | null;
+  phone: string | null;
+  email: string | null;
+  website: string | null;
+  city: string | null;
+  owner_name: string | null;
+  owner_assigned_at: string | null;
+  owner_assigned_by: string | null;
+  relationship_status: string;
+  do_not_contact: boolean;
+  notes: string | null;
+  last_touch: string | null;
+  next_touch_due: string | null;
+  created_by_email: string | null;
+  created_at: string;
+  updated_at: string;
 }

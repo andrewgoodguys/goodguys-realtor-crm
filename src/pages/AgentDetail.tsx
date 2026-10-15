@@ -15,9 +15,12 @@ import {
   useLeads,
   useOfficesForBrokerage,
   usePeople,
+  useReferralTotals,
+  useReferredJobs,
   useTouches,
   useUpdateAgent,
 } from "@/hooks/useData";
+import { ReferredJobsCard } from "@/components/Referred";
 import {
   dialable,
   fmtDate,
@@ -50,6 +53,8 @@ export default function AgentDetail() {
   const { id } = useParams<{ id: string }>();
   const agentQ = useAgent(id);
   const leadsQ = useLeads({ agentId: id });
+  const referredQ = useReferredJobs({ agentId: id });
+  const referral = useReferralTotals().data?.byAgent.get(id ?? "");
   const touchesQ = useTouches(id);
   const update = useUpdateAgent();
   const peopleQ = usePeople();
@@ -122,6 +127,12 @@ export default function AgentDetail() {
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               <Badge tone="brand">Priority {Math.round(agent.priority)}</Badge>
+              {referral && referral.referred_jobs > 0 && (
+                <Badge tone="brand">
+                  Referred us {referral.referred_jobs} · {fmtMoney(referral.referred_revenue)}
+                </Badge>
+              )}
+              {referral?.pays_fee && <Badge tone="warn">Referral fee</Badge>}
               {agent.owner_name && <Badge tone="info">{agent.owner_name}</Badge>}
               <Badge>{agent.relationship_status}</Badge>
               {agent.do_not_contact && <Badge tone="danger">DO NOT CONTACT</Badge>}
@@ -364,6 +375,12 @@ export default function AgentDetail() {
               </ul>
             )}
           </Card>
+
+          <ReferredJobsCard
+            jobs={referredQ.data}
+            loading={referredQ.isLoading}
+            total={referral}
+          />
         </div>
       )}
 

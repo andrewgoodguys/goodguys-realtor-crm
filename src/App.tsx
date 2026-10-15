@@ -3,6 +3,7 @@ import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import {
   BarChart3,
   Building,
+  Briefcase,
   Building2,
   Handshake,
   ListChecks,
@@ -25,6 +26,9 @@ import Brokerages from "@/pages/Brokerages";
 import BrokerageDetail from "@/pages/BrokerageDetail";
 import Leads from "@/pages/Leads";
 import Partners from "@/pages/Partners";
+import PartnerDetail from "@/pages/PartnerDetail";
+import HiringPartners from "@/pages/HiringPartners";
+import HiringPartnerDetail from "@/pages/HiringPartnerDetail";
 import RunLog from "@/pages/RunLog";
 import Settings from "@/pages/Settings";
 import Cadence from "@/pages/Cadence";
@@ -46,8 +50,11 @@ const NAV = [
   // Four lists behind one item — lenders, organizers, insurance, other — as
   // tabs on the page, which keeps the phone bar at seven.
   { to: "/partners", label: "Partners", icon: Handshake, end: false, mobile: true },
+  // Crew and management hiring, as two tabs. It took Run log's place in the
+  // phone bar: the run log is read at a desk, hiring partners get called.
+  { to: "/hiring", label: "Hiring", icon: Briefcase, end: false, mobile: true },
   { to: "/cadence", label: "Cadence", icon: ListChecks, end: false, mobile: false },
-  { to: "/runs", label: "Run log", icon: ScrollText, end: false, mobile: true },
+  { to: "/runs", label: "Run log", icon: ScrollText, end: false, mobile: false },
   { to: "/settings", label: "Settings", icon: SlidersHorizontal, end: false, mobile: true },
 ];
 
@@ -96,15 +103,16 @@ export default function App() {
             )}
           </span>
 
-          <nav className="ml-4 hidden gap-1 md:flex">
+          <nav className="ml-2 hidden gap-0.5 md:flex">
             {NAV.map(({ to, label, icon: Icon, end }) => (
               <NavLink
                 key={to}
                 to={to}
                 end={end}
+                title={label}
                 className={({ isActive }) =>
                   cn(
-                    "inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
+                    "inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors",
                     isActive
                       ? "bg-brand-100 text-brand-800 dark:bg-brand-900 dark:text-brand-100"
                       : "muted hover:bg-[var(--surface-2)]",
@@ -112,13 +120,14 @@ export default function App() {
                 }
               >
                 <Icon className="size-4" />
-                {label}
+                {/* Icons alone on a tablet: nine labels do not fit under lg. */}
+                <span className="hidden lg:inline">{label}</span>
               </NavLink>
             ))}
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
-            <span className="muted hidden text-sm sm:inline">{email}</span>
+            <span className="muted hidden text-sm 2xl:inline">{email}</span>
             <Button variant="ghost" size="sm" onClick={signOut} aria-label="Sign out">
               <LogOut className="size-4" />
             </Button>
@@ -136,6 +145,9 @@ export default function App() {
           <Route path="/brokerages/:brokerage" element={<BrokerageDetail />} />
           <Route path="/leads" element={<Leads />} />
           <Route path="/partners" element={<Partners />} />
+          <Route path="/partners/:id" element={<PartnerDetail />} />
+          <Route path="/hiring" element={<HiringPartners />} />
+          <Route path="/hiring/:id" element={<HiringPartnerDetail />} />
           <Route path="/cadence" element={<Cadence />} />
           <Route path="/runs" element={<RunLog />} />
           <Route path="/settings" element={<Settings />} />

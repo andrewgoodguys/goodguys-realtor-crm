@@ -7,12 +7,16 @@ import type {
   BrokerageSummary,
   ContactScore,
   DueThisWeekRow,
+  HiringPartner,
+  HiringTrack,
   Lead,
   OutreachStep,
   OwnerWorkload,
   LastRebalance,
   Partner,
   PartnerType,
+  ReferralTotal,
+  ReferredJob,
   Person,
   RebalancePreview,
   Run,
@@ -48,6 +52,8 @@ export interface AgentFilters {
   status?: string;
   brokerage?: string;
   includeDnc?: boolean;
+  /** Only these agents — the "referred us" filter, from referral_totals. */
+  ids?: string[];
 }
 
 export function useAgents(filters: AgentFilters = {}) {
@@ -67,6 +73,10 @@ export function useAgents(filters: AgentFilters = {}) {
       else if (filters.owner) q = q.eq("owner_name", filters.owner);
       if (filters.status) q = q.eq("relationship_status", filters.status);
       if (!filters.includeDnc) q = q.eq("do_not_contact", false);
+      if (filters.ids) {
+        if (!filters.ids.length) return [] as Agent[];
+        q = q.in("id", filters.ids);
+      }
 
       return unwrap(await q.limit(500)) as Agent[];
     },
@@ -137,7 +147,9 @@ export function useDueThisWeek(owner?: string | null) {
 /* ---------------------------------------------------------------- partners */
 
 export interface PartnerFilters {
-  type: PartnerType;
+  /** One list, or — with `ids` instead — partners of any type. */
+  type?: PartnerType;
+  ids?: string[];
   search?: string;
   owner?: string;
 }
@@ -150,11 +162,12 @@ export function usePartners(filters: PartnerFilters) {
   return useQuery({
     queryKey: ["partners", filters],
     queryFn: async () => {
-      let q = supabase
-        .from("partners")
-        .select("*")
-        .eq("type", filters.type)
-        .eq("do_not_contact", false);
+      let q = supabase.from("partners").select("*").eq("do_not_contact", false);
+      if (filters.ids) {
+        if (!filters.ids.length) return [] as Partner[];
+        q = q.in("id", filters.ids);
+      }
+      if (filters.type) q = q.eq("type", filters.type);
       if (filters.type === "other_partner") {
         q = q.order("subtype", { ascending: true, nullsFirst: true });
       }
@@ -204,6 +217,190 @@ export function useAssignPartners() {
   });
 }
 
+export function usePartner(id: string | undefined) {
+  return useQuery({
+    enabled: Boolean(id),
+    queryKey: ["partners", "one", id],
+    queryFn: async () =>
+      unwrap(await supabase.from("partners").select("*").eq("id", id!).single()) as Partner,
+  });
+}
+
+export function useUpdatePartner() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, patch }: { id: string; patch: Partial<Partner> }) =>
+      unwrap(
+        await supabase.from("partners").update(patch).eq("id", id).select().single(),
+      ) as Partner,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["partners"] }),
+  });
+}
+
+/* ---------------------------------------------------------- hiring partners */
+
+export interface HiringFilters {
+  track: HiringTrack;
+  search?: string;
+  owner?: string;
+}
+
+export function useHiringPartners(filters: HiringFilters) {
+  return useQuery({
+    queryKey: ["hiring", filters],
+    queryFn: async () => {
+      let q = supabase
+        .from("hiring_partners")
+        .select("*")
+        .eq("track", filters.track)
+        .eq("do_not_contact", false)
+        .order("person_name");
+      if (filters.search?.trim()) {
+        const term = `%${filters.search.trim()}%`;
+        q = q.or(
+          `person_name.ilike.${term},organization.ilike.${term},org_type.ilike.${term},city.ilike.${term},phone.ilike.${term}`,
+        );
+      }
+      if (filters.owner === UNASSIGNED) q = q.is("owner_name", null);
+      else if (filters.owner) q = q.eq("owner_name", filters.owner);
+      return unwrap(await q.limit(500)) as HiringPartner[];
+    },
+  });
+}
+
+/** Per track, for the tab labels, plus every org type typed so far — the add
+ *  form suggests them so "Church" and "church" do not both end up in the list. */
+export function useHiringMeta() {
+  return useQuery({
+    queryKey: ["hiring", "meta"],
+    queryFn: async () => {
+      const rows = unwrap(
+        await supabase
+          .from("hiring_partners")
+          .select("track,org_type,do_not_contact"),
+      ) as Pick<HiringPartner, "track" | "org_type" | "do_not_contact">[];
+      const counts: Record<string, number> = {};
+      const orgTypes = new Set<string>();
+      for (const r of rows) {
+        if (!r.do_not_contact) counts[r.track] = (counts[r.track] ?? 0) + 1;
+        if (r.org_type) orgTypes.add(r.org_type);
+      }
+      return { counts, orgTypes: [...orgTypes].sort() };
+    },
+  });
+}
+
+export function useHiringPartner(id: string | undefined) {
+  return useQuery({
+    enabled: Boolean(id),
+    queryKey: ["hiring", "one", id],
+    queryFn: async () =>
+      unwrap(
+        await supabase.from("hiring_partners").select("*").eq("id", id!).single(),
+      ) as HiringPartner,
+  });
+}
+
+export function useAddHiringPartner() {
+  const qc = useQueryClient();
+  const { email } = useAuth();
+  return useMutation({
+    mutationFn: async (row: Partial<HiringPartner>) =>
+      unwrap(
+        await supabase
+          .from("hiring_partners")
+          .insert({ ...row, created_by_email: email })
+          .select()
+          .single(),
+      ) as HiringPartner,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["hiring"] }),
+  });
+}
+
+export function useUpdateHiringPartner() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ ids, patch }: { ids: string[]; patch: Partial<HiringPartner> }) =>
+      unwrap(
+        await supabase.from("hiring_partners").update(patch).in("id", ids).select(),
+      ) as HiringPartner[],
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["hiring"] }),
+  });
+}
+
+/* --------------------------------------------------------------- referrals */
+
+/** Everyone who has referred us, keyed both ways. Small (one row per
+ *  referrer), so it is fetched whole and joined in the page rather than
+ *  pushed into every agent and partner query. */
+export function useReferralTotals() {
+  return useQuery({
+    queryKey: ["referrals", "totals"],
+    queryFn: async () => {
+      const rows = unwrap(
+        await supabase.from("referral_totals").select("*"),
+      ) as ReferralTotal[];
+      const byAgent = new Map<string, ReferralTotal>();
+      const byPartner = new Map<string, ReferralTotal>();
+      for (const r of rows) {
+        if (r.agent_id) byAgent.set(r.agent_id, r);
+        if (r.partner_id) byPartner.set(r.partner_id, r);
+      }
+      return { byAgent, byPartner };
+    },
+  });
+}
+
+/** The jobs one agent or partner referred, newest first. */
+export function useReferredJobs(by: { agentId?: string; partnerId?: string }) {
+  return useQuery({
+    enabled: Boolean(by.agentId || by.partnerId),
+    queryKey: ["referrals", "jobs", by],
+    queryFn: async () => {
+      let q = supabase
+        .from("referred_jobs")
+        .select("*")
+        .order("job_date", { ascending: false, nullsFirst: false });
+      q = by.agentId ? q.eq("agent_id", by.agentId) : q.eq("partner_id", by.partnerId!);
+      return unwrap(await q.limit(500)) as ReferredJob[];
+    },
+  });
+}
+
+/** Referrer names nobody has said who they are yet, with what they sent. */
+export function useUnlinkedReferrers() {
+  return useQuery({
+    queryKey: ["referrals", "unlinked"],
+    queryFn: async () => {
+      const rows = unwrap(
+        await supabase
+          .from("referred_jobs")
+          .select("referrer_id,affiliate_name,revenue,counts")
+          .is("agent_id", null)
+          .is("partner_id", null),
+      ) as Pick<ReferredJob, "referrer_id" | "affiliate_name" | "revenue" | "counts">[];
+      const ignored = new Set(
+        (
+          unwrap(
+            await supabase.from("referrers").select("id").eq("ignored", true),
+          ) as { id: string }[]
+        ).map((r) => r.id),
+      );
+      const by = new Map<string, { name: string; moves: number; revenue: number }>();
+      for (const r of rows) {
+        if (ignored.has(r.referrer_id)) continue;
+        const t = by.get(r.referrer_id) ?? { name: r.affiliate_name, moves: 0, revenue: 0 };
+        if (r.counts) {
+          t.moves += 1;
+          t.revenue += Number(r.revenue ?? 0);
+        }
+        by.set(r.referrer_id, t);
+      }
+      return [...by.values()].sort((a, b) => b.revenue - a.revenue);
+    },
+  });
+}
+
 /* ------------------------------------------------------------------- leads */
 
 export function useLeads(opts: { agentId?: string; status?: string; search?: string } = {}) {
@@ -231,16 +428,27 @@ export function useLeads(opts: { agentId?: string; status?: string; search?: str
 
 /* ----------------------------------------------------------------- touches */
 
+/** Who a touch is against. Exactly one, as touches_one_subject requires. */
+export type TouchSubject =
+  | { agent_id: string }
+  | { partner_id: string }
+  | { hiring_partner_id: string };
+
 export function useTouches(agentId: string | undefined) {
+  return useSubjectTouches(agentId ? { agent_id: agentId } : undefined);
+}
+
+export function useSubjectTouches(subject: TouchSubject | undefined) {
+  const [column, id] = subject ? Object.entries(subject)[0] : [];
   return useQuery({
-    enabled: Boolean(agentId),
-    queryKey: ["touches", agentId],
+    enabled: Boolean(id),
+    queryKey: ["touches", column, id],
     queryFn: async () =>
       unwrap(
         await supabase
           .from("touches")
           .select("*")
-          .eq("agent_id", agentId!)
+          .eq(column!, id!)
           .order("occurred_at", { ascending: false }),
       ) as Touch[],
   });
@@ -275,7 +483,10 @@ export function useLogTouch() {
     onSuccess: (touch) => {
       invalidateAgentViews(qc);
       qc.invalidateQueries({ queryKey: ["touches"] });
-      qc.invalidateQueries({ queryKey: ["agents", "one", touch.agent_id] });
+      if (touch.agent_id) qc.invalidateQueries({ queryKey: ["agents", "one", touch.agent_id] });
+      // The trigger moved last_touch / next_touch_due and maybe the status.
+      if (touch.partner_id) qc.invalidateQueries({ queryKey: ["partners"] });
+      if (touch.hiring_partner_id) qc.invalidateQueries({ queryKey: ["hiring"] });
     },
   });
 }

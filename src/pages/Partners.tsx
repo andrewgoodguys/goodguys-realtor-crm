@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { ExternalLink, Handshake, Search, UserPlus, Users } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -8,14 +8,24 @@ import {
   usePartnerCounts,
   usePartners,
   usePeople,
+  useReferralTotals,
+  useUnlinkedReferrers,
 } from "@/hooks/useData";
 import { isMissingSchema } from "@/lib/supabase";
-import { fmtPhone } from "@/lib/format";
-import { PARTNER_TYPES, type Partner, type PartnerType, type Person } from "@/lib/types";
+import { fmtDate, fmtMoney, fmtPhone } from "@/lib/format";
+import {
+  PARTNER_TYPES,
+  type Partner,
+  type PartnerType,
+  type Person,
+  type ReferralTotal,
+} from "@/lib/types";
+import { ReferredCell } from "@/components/Referred";
 import {
   Badge,
   Button,
   Card,
+  CardHeader,
   EmptyState,
   ErrorState,
   Input,
@@ -25,6 +35,8 @@ import {
 } from "@/components/ui";
 
 const MINE = "__mine__";
+const REFERRED = "referred";
+type Tab = PartnerType | typeof REFERRED;
 
 /** Lenders, organizers, insurance agents and the rest — one page, one tab per
  *  list. A nav item each would not fit the phone bar (see NAV in App.tsx), and
@@ -33,19 +45,34 @@ export default function Partners() {
   const { owner } = useAuth();
   // Tab and owner in the URL, so a link can land on "my organizers".
   const [params, setParams] = useSearchParams();
-  const type = (PARTNER_TYPES.find((t) => t.key === params.get("type"))?.key ??
-    PARTNER_TYPES[0].key) as PartnerType;
+  // "Referred us" is first and the default: partners who have actually sent us
+  // a job, of any type. The researched lists follow.
+  const tab: Tab =
+    PARTNER_TYPES.find((t) => t.key === params.get("type"))?.key ?? REFERRED;
   const ownerFilter = params.get("owner") ?? "";
   const [search, setSearch] = useState("");
 
   const people = usePeople().data ?? [];
   const counts = usePartnerCounts().data ?? {};
+  const referrals = useReferralTotals().data;
   const assign = useAssignPartners();
 
   const resolvedOwner =
     ownerFilter === MINE ? (owner ?? undefined) : ownerFilter || undefined;
-  const { data, isLoading, error } = usePartners({ type, search, owner: resolvedOwner });
-  const rows = data ?? [];
+  const referredIds = referrals ? [...referrals.byPartner.keys()] : [];
+  const { data, isLoading, error } = usePartners(
+    tab === REFERRED
+      ? { ids: referredIds, search, owner: resolvedOwner }
+      : { type: tab, search, owner: resolvedOwner },
+  );
+  const rows =
+    tab === REFERRED
+      ? [...(data ?? [])].sort(
+          (a, b) =>
+            (referrals?.byPartner.get(b.id)?.referred_revenue ?? 0) -
+            (referrals?.byPartner.get(a.id)?.referred_revenue ?? 0),
+        )
+      : (data ?? []);
 
   function setParam(key: string, value: string) {
     const next = new URLSearchParams(params);
@@ -54,7 +81,11 @@ export default function Partners() {
     setParams(next, { replace: true });
   }
 
-  const label = PARTNER_TYPES.find((t) => t.key === type)!.label;
+  const tabs = [
+    { key: REFERRED, label: "Referred us", short: "Referred", count: referrals?.byPartner.size },
+    ...PARTNER_TYPES.map((t) => ({ ...t, count: counts[t.key] })),
+  ];
+  const label = tabs.find((t) => t.key === tab)!.label;
 
   return (
     <div className="space-y-4">
@@ -62,7 +93,9 @@ export default function Partners() {
         <div>
           <h1 className="text-xl font-semibold">Partners</h1>
           <p className="muted text-sm">
-            Researched referral sources outside real estate · ranked by volume, then reviews
+            {tab === REFERRED
+              ? "Partners who have sent us moves · from SmartMoving's Affiliate Name · most revenue first"
+              : "Researched referral sources outside real estate · ranked by volume, then reviews"}
           </p>
         </div>
         {owner && ownerFilter !== MINE && (
@@ -76,25 +109,25 @@ export default function Partners() {
       <div
         role="tablist"
         aria-label="Partner lists"
-        className="flex gap-1 overflow-x-auto border-b border-[var(--border)]"
+        className="flex gap-1 overflow-x-auto overflow-y-hidden border-b border-[var(--border)]"
       >
-        {PARTNER_TYPES.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t.key}
             role="tab"
-            aria-selected={t.key === type}
-            onClick={() => setParam("type", t.key)}
+            aria-selected={t.key === tab}
+            onClick={() => setParam("type", t.key === REFERRED ? "" : t.key)}
             className={cn(
               "-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors",
-              t.key === type
+              t.key === tab
                 ? "border-brand-600 text-brand-700 dark:text-brand-300"
                 : "muted border-transparent hover:text-[var(--text)]",
             )}
           >
             <span className="sm:hidden">{t.short}</span>
             <span className="hidden sm:inline">{t.label}</span>
-            {counts[t.key] != null && (
-              <span className="nums ml-1.5 text-xs opacity-70">{counts[t.key]}</span>
+            {t.count != null && (
+              <span className="nums ml-1.5 text-xs opacity-70">{t.count}</span>
             )}
           </button>
         ))}
@@ -146,8 +179,12 @@ export default function Partners() {
         <Card>
           <EmptyState
             icon={<Handshake className="size-8" />}
-            title={`No ${label.toLowerCase()} match`}
-            description="Clear the filters, or load the researched list with scripts/load_partners.py."
+            title={tab === REFERRED ? "No partner referrals yet" : `No ${label.toLowerCase()} match`}
+            description={
+              tab === REFERRED
+                ? "A partner shows here once a SmartMoving job names them as its Affiliate."
+                : "Clear the filters, or load the researched list with scripts/load_partners.py."
+            }
           />
         </Card>
       ) : (
@@ -157,6 +194,8 @@ export default function Partners() {
               <PartnerRow
                 key={p.id}
                 partner={p}
+                referral={referrals?.byPartner.get(p.id)}
+                showType={tab === REFERRED}
                 people={people}
                 me={owner}
                 busy={assign.isPending}
@@ -166,18 +205,58 @@ export default function Partners() {
           </ul>
         </Card>
       )}
+
+      {tab === REFERRED && <UnlinkedReferrers />}
     </div>
+  );
+}
+
+/** Affiliate names in SmartMoving that are not linked to anyone yet, so their
+ *  referrals are counted nowhere. The weekly run links what it can; this is
+ *  what is left for a person to say who it is. */
+function UnlinkedReferrers() {
+  const { data } = useUnlinkedReferrers();
+  if (!data?.length) return null;
+  return (
+    <Card>
+      <CardHeader
+        title="Not linked to anyone yet"
+        subtitle="SmartMoving referrers the CRM can't match to an agent or partner. Their moves aren't counted until they are."
+      />
+      <ul className="divide-y divide-[var(--border)]">
+        {data.map((r) => (
+          <li key={r.name} className="flex items-center justify-between gap-2 px-4 py-2 text-sm">
+            <span>
+              {r.name.replace(/^\*/, "")}
+              {r.name.startsWith("*") && (
+                <Badge tone="warn" className="ml-2">
+                  fee
+                </Badge>
+              )}
+            </span>
+            <span className="nums muted text-xs">
+              {r.moves} moves · {fmtMoney(r.revenue)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 
 function PartnerRow({
   partner: p,
+  referral,
+  showType,
   people,
   me,
   busy,
   onAssign,
 }: {
   partner: Partner;
+  referral: ReferralTotal | undefined;
+  /** On "Referred us", which list they came from instead of a rank on it. */
+  showType: boolean;
   people: Person[];
   me: string | null;
   busy: boolean;
@@ -193,20 +272,42 @@ function PartnerRow({
     <li className="px-4 py-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 gap-3">
-          <span className="nums muted w-8 shrink-0 pt-0.5 text-right text-sm">
-            {p.rank ?? "—"}
-          </span>
+          {!showType && (
+            <span className="nums muted w-8 shrink-0 pt-0.5 text-right text-sm">
+              {p.rank ?? "—"}
+            </span>
+          )}
           <div className="min-w-0">
             <p className="font-medium">
-              {headline}
+              <Link to={`/partners/${p.id}`} className="hover:text-brand-600 hover:underline">
+                {headline}
+              </Link>
+              {showType && (
+                <Badge tone="info" className="ml-2 align-middle">
+                  {PARTNER_TYPES.find((t) => t.key === p.type)?.short ?? p.type}
+                </Badge>
+              )}
               {p.subtype && (
                 <Badge tone="neutral" className="ml-2 align-middle">
                   {p.subtype}
                 </Badge>
               )}
+              {referral?.pays_fee && (
+                <Badge tone="warn" className="ml-2 align-middle">
+                  fee
+                </Badge>
+              )}
             </p>
             {sub && <p className="muted truncate text-sm">{sub}</p>}
-            {p.rank_basis && <p className="muted mt-1 text-xs">{p.rank_basis}</p>}
+            {referral && (
+              <p className="mt-1 text-sm">
+                <ReferredCell total={referral} />
+                {referral.last_referral && (
+                  <span className="muted ml-2 text-xs">last {fmtDate(referral.last_referral)}</span>
+                )}
+              </p>
+            )}
+            {!showType && p.rank_basis && <p className="muted mt-1 text-xs">{p.rank_basis}</p>}
           </div>
         </div>
 
@@ -241,7 +342,12 @@ function PartnerRow({
         </div>
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 pl-11 text-sm">
+      <div
+        className={cn(
+          "mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm",
+          !showType && "pl-11",
+        )}
+      >
         {p.phone ? (
           <a href={`tel:${p.phone}`} className="nums text-brand-600 hover:underline">
             {fmtPhone(p.phone)}
@@ -265,6 +371,9 @@ function PartnerRow({
           </a>
         )}
         {p.license && <span className="muted text-xs">#{p.license}</span>}
+        <span className="muted text-xs">
+          {p.last_touch ? `last touch ${fmtDate(p.last_touch)}` : "never contacted"}
+        </span>
       </div>
     </li>
   );

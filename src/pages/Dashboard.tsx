@@ -206,7 +206,13 @@ export default function Dashboard() {
               <li key={t.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
                 <Badge tone={t.got_response ? "brand" : "neutral"}>{t.channel}</Badge>
                 <Link
-                  to={`/agents/${t.agent_id}`}
+                  to={
+                    t.partner_id
+                      ? `/partners/${t.partner_id}`
+                      : t.hiring_partner_id
+                        ? `/hiring/${t.hiring_partner_id}`
+                        : `/agents/${t.agent_id}`
+                  }
                   className="truncate font-medium hover:text-brand-600 hover:underline"
                 >
                   {t.outcome ?? t.notes ?? "Logged"}
