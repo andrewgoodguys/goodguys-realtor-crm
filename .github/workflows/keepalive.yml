@@ -1,0 +1,28 @@
+# A free Supabase project with no traffic for a week gets paused, and a paused
+# project takes the CRM down with it. This makes one small read a day so that
+# never happens.
+#
+# It is a plain anon select, not an RPC: RLS hands back an empty list, but the
+# query still reaches Postgres, which is what counts as activity. A keep-alive
+# function would have to be security definer and callable by anon -- exactly
+# what 0016 asserts can't exist.
+name: keepalive
+
+on:
+  schedule:
+    - cron: "17 1 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read one row
+        env:
+          URL: ${{ secrets.VITE_SUPABASE_URL }}
+          KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          curl -fsS "$URL/rest/v1/agents?select=id&limit=1" \
+            -H "apikey: $KEY" -H "Authorization: Bearer $KEY"
